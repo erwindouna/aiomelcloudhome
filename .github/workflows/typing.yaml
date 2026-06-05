@@ -1,0 +1,43 @@
+---
+name: Typing
+
+# yamllint disable-line rule:truthy
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  DEFAULT_PYTHON: "3.11"
+
+jobs:
+  mypy:
+    name: mypy
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⤵️ Check out code from GitHub
+        uses: actions/checkout@v6
+      - name: 🏗 Set up Python ${{ env.DEFAULT_PYTHON }}
+        id: python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.DEFAULT_PYTHON }}
+      - name: 📦 Cache uv
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ env.DEFAULT_PYTHON }}-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-${{ env.DEFAULT_PYTHON }}-
+            ${{ runner.os }}-uv-
+      - name: 🏗 Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+      - name: 🏗 Install workflow dependencies
+        run: uv sync --all-groups
+      - name: 🏗 Install dependencies
+        run: uv sync --all-groups
+      - name: 🚀 Run mypy
+        run: uv run mypy examples src tests

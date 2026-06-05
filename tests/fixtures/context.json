@@ -1,0 +1,74 @@
+{
+  "buildings": [
+    {
+      "id": "building-uuid-1",
+      "name": "My Home",
+      "airToAirUnits": [
+        {
+          "id": "ata-unit-uuid-1",
+          "givenDisplayName": "Living Room AC",
+          "settings": [
+            {"name": "Power", "value": "True"},
+            {"name": "OperationMode", "value": "Heat"},
+            {"name": "SetTemperature", "value": "21"},
+            {"name": "RoomTemperature", "value": "20"},
+            {"name": "SetFanSpeed", "value": "Auto"},
+            {"name": "VaneVerticalDirection", "value": "Auto"},
+            {"name": "VaneHorizontalDirection", "value": "Centre"},
+            {"name": "InStandbyMode", "value": "False"},
+            {"name": "IsInError", "value": "False"}
+          ],
+          "capabilities": {
+            "numberOfFanSpeeds": 5,
+            "minTempHeat": 10.0,
+            "maxTempHeat": 31.0,
+            "minTempCool": 16.0,
+            "maxTempCool": 31.0,
+            "hasHalfDegreeIncrements": true,
+            "hasCoolOperationMode": true,
+            "hasDryOperationMode": true,
+            "hasFanOperationMode": true,
+            "hasAutoOperationMode": true,
+            "hasOutdoorTemperatureSensor": false,
+            "hasEnergyConsumedMeter": false,
+            "hasVaneVertical": true,
+            "hasVaneHorizontal": true,
+            "hasStandbyMode": false
+          },
+          "rssi": -45
+        }
+      ],
+      "airToWaterUnits": [
+        {
+          "id": "atw-unit-uuid-1",
+          "givenDisplayName": "Heat Pump",
+          "settings": [
+            {"name": "Power", "value": "True"},
+            {"name": "OperationMode", "value": "HeatZones"},
+            {"name": "OperationModeZone1", "value": "HeatRoomTemperature"},
+            {"name": "SetTemperatureZone1", "value": "21"},
+            {"name": "RoomTemperatureZone1", "value": "20"},
+            {"name": "SetTankWaterTemperature", "value": "50"},
+            {"name": "TankWaterTemperature", "value": "48"},
+            {"name": "ForcedHotWaterMode", "value": "False"},
+            {"name": "HasZone2", "value": "0"},
+            {"name": "InStandbyMode", "value": "False"},
+            {"name": "IsInError", "value": "False"}
+          ],
+          "capabilities": {
+            "hasHotWater": true,
+            "hasZone2": false,
+            "hasHalfDegrees": false,
+            "hasCoolingMode": false,
+            "minSetTankTemperature": 40,
+            "maxSetTankTemperature": 60,
+            "hasStandbyMode": false,
+            "hasEnergyConsumedMeter": true
+          },
+          "rssi": -52
+        }
+      ]
+    }
+  ],
+  "guestBuildings": []
+}

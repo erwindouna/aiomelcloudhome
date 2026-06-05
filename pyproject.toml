@@ -1,0 +1,178 @@
+[project]
+name = "aiomelcloudhome"
+version = "0.1.0"
+description = "Asynchronous Python client for the Melcloud Home API"
+authors = [{ name = "Erwin Douna", email = "e.douna@gmail.com" }]
+requires-python = ">=3.11,<4"
+readme = "README.md"
+license = "MIT"
+maintainers = [{ name = "Erwin Douna", email = "e.douna@gmail.com" }]
+keywords = [
+    "melcloud",
+    "melcloudhome",
+    "hvac",
+    "heat-pump",
+    "async",
+    "api",
+    "client",
+]
+classifiers = [
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "aiohttp>=3.0.0",
+    "yarl>=1.6.0",
+    "mashumaro>=3.17,<4",
+    "orjson>=3.10.16,<4",
+    "tenacity>=8.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/erwindouna/aiomelcloudhome"
+Repository = "https://github.com/erwindouna/aiomelcloudhome"
+Documentation = "https://github.com/erwindouna/aiomelcloudhome"
+"Bug Tracker" = "https://github.com/erwindouna/aiomelcloudhome/issues"
+Changelog = "https://github.com/erwindouna/aiomelcloudhome/releases"
+
+[dependency-groups]
+dev = [
+    "aresponses==3.0.0",
+    "freezegun==1.5.5",
+    "codespell==2.4.2",
+    "covdefaults==2.3.0",
+    "coverage[toml]==7.14.1",
+    "mypy==2.1.0",
+    "pre-commit==4.6.0",
+    "pre-commit-hooks==6.0.0",
+    "pylint==4.0.5",
+    "pytest==9.0.3",
+    "pytest-asyncio==1.4.0",
+    "pytest-cov==7.1.0",
+    "ruff==0.15.15",
+    "syrupy==5.3.1",
+    "yamllint==1.38.0",
+]
+docs = [
+    "mkdocs>=1.6.1,<2",
+    "mkdocstrings[python]>=0.30.1,<1.1.0",
+    "mkdocs-material>=9.6.22,<10",
+]
+
+[tool.uv]
+default-groups = [
+    "dev",
+    "docs",
+]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/aiomelcloudhome"]
+
+[tool.hatch.build.targets.wheel]
+include = ["src/aiomelcloudhome"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src/aiomelcloudhome" = "aiomelcloudhome"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.coverage.run]
+plugins = ["covdefaults"]
+source = ["aiomelcloudhome"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+
+[tool.mypy]
+platform = "linux"
+python_version = "3.11"
+show_column_numbers = true
+follow_imports = "normal"
+ignore_missing_imports = true
+check_untyped_defs = true
+disallow_any_generics = true
+disallow_incomplete_defs = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_untyped_decorators = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+no_implicit_reexport = true
+strict_optional = true
+warn_incomplete_stub = true
+warn_no_return = true
+warn_redundant_casts = true
+warn_return_any = true
+warn_unused_configs = true
+warn_unused_ignores = true
+
+[tool.pylint.MASTER]
+ignore = ["tests"]
+
+[tool.pylint.BASIC]
+good-names = ["_", "ex", "fp", "i", "id", "j", "k", "on", "Run", "T"]
+
+[tool.pylint."MESSAGES CONTROL"]
+disable = [
+    "duplicate-code",
+    "format",
+    "unsubscriptable-object",
+    "too-many-public-methods",
+]
+
+[tool.pylint.SIMILARITIES]
+ignore-imports = true
+
+[tool.pylint.FORMAT]
+max-line-length = 88
+
+[tool.pylint.DESIGN]
+max-attributes = 20
+
+[tool.pytest.ini_options]
+addopts = "--cov"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+lint.select = ["ALL"]
+lint.ignore = [
+    "ANN401",
+    "D203",
+    "D213",
+    "D417",
+    "PLR2004",
+    "SLOT000",
+    "PLR0913",
+    "PLR0912",
+    "COM812",
+    "ISC001",
+    "TRY003",
+    "TRY301",
+    "EM101",
+    "EM102",
+]
+line-length = 150
+
+[tool.ruff.lint.flake8-pytest-style]
+mark-parentheses = false
+fixture-parentheses = false
+
+[tool.ruff.lint.isort]
+known-first-party = ["aiomelcloudhome"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 25
+
+[tool.ruff.lint.per-file-ignores]
+"src/aiomelcloudhome/aiomelcloudhome.py" = ["ASYNC109"]
+"tests/**/*.py" = ["S101", "S105", "S106", "S108", "DTZ001", "DTZ006", "PLC0415", "ARG001", "ARG002", "TC001", "TC002", "TC003", "SIM117", "SLF001"]
