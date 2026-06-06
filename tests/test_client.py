@@ -1,7 +1,6 @@
 """Additional tests to increase coverage for the MELCloudHome client and auth."""
 
-from __future__ import annotations
-
+import json
 import socket
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -12,13 +11,9 @@ from aresponses import ResponsesMockServer
 from pydantic import ValidationError
 
 from aiomelcloudhome import MELCloudHome, MelCloudHomeAuthenticationError, MelCloudHomeConnectionError, MelCloudHomeTimeoutError
-from aiomelcloudhome.auth import MelCloudHomeAuth
+from aiomelcloudhome.auth import MelCloudHomeAuth, _generate_pkce_pair
 from aiomelcloudhome.models.ata import ATAUnit
 from aiomelcloudhome.models.atw import ATWUnit, ATWZoneMode
-
-# ---------------------------------------------------------------------------
-# Client: __aenter__ / __aexit__ without a pre-provided session
-# ---------------------------------------------------------------------------
 
 
 async def test_client_creates_own_session() -> None:
@@ -53,35 +48,23 @@ async def test_client_uses_provided_session() -> None:
                 assert c._session is session
 
 
-# ---------------------------------------------------------------------------
-# Client: error handling in _request
-# ---------------------------------------------------------------------------
-
-
-async def test_connection_error_is_raised(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome) -> None:
-    """Test that ClientConnectionError is wrapped as MelCloudHomeConnectionError."""
-    with patch.object(melcloudhome_client._session, "request", side_effect=aiohttp.ClientConnectionError("connection refused")):
-        with pytest.raises(MelCloudHomeConnectionError):
+@pytest.mark.parametrize(
+    ("request_side_effect", "expected_exception"),
+    [
+        (aiohttp.ClientConnectionError("connection refused"), MelCloudHomeConnectionError),
+        (aiohttp.ServerTimeoutError(), MelCloudHomeTimeoutError),
+        (socket.gaierror("DNS lookup failed"), MelCloudHomeConnectionError),
+    ],
+)
+async def test_request_error_wrapping(
+    melcloudhome_client: MELCloudHome,
+    request_side_effect: Exception,
+    expected_exception: type[Exception],
+) -> None:
+    """Test that low-level request failures are mapped to client-level exceptions."""
+    with patch.object(melcloudhome_client._session, "request", side_effect=request_side_effect):
+        with pytest.raises(expected_exception):
             await melcloudhome_client.get_context()
-
-
-async def test_timeout_error_is_raised(melcloudhome_client: MELCloudHome) -> None:
-    """Test that ServerTimeoutError is wrapped as MelCloudHomeTimeoutError."""
-    with patch.object(melcloudhome_client._session, "request", side_effect=aiohttp.ServerTimeoutError()):
-        with pytest.raises(MelCloudHomeTimeoutError):
-            await melcloudhome_client.get_context()
-
-
-async def test_dns_error_is_raised(melcloudhome_client: MELCloudHome) -> None:
-    """Test that socket.gaierror is wrapped as MelCloudHomeConnectionError."""
-    with patch.object(melcloudhome_client._session, "request", side_effect=socket.gaierror("DNS lookup failed")):
-        with pytest.raises(MelCloudHomeConnectionError):
-            await melcloudhome_client.get_context()
-
-
-# ---------------------------------------------------------------------------
-# Client: outdoor temperature edge cases
-# ---------------------------------------------------------------------------
 
 
 async def test_get_outdoor_temperature_no_matching_dataset(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome) -> None:
@@ -114,11 +97,6 @@ async def test_get_outdoor_temperature_empty_data(aresponses: ResponsesMockServe
 
     temp = await melcloudhome_client.get_outdoor_temperature("unit-1")
     assert temp is None
-
-
-# ---------------------------------------------------------------------------
-# Client: telemetry with empty measureData
-# ---------------------------------------------------------------------------
 
 
 async def test_get_energy_telemetry_empty_measure_data(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome) -> None:
@@ -166,11 +144,6 @@ async def test_get_actual_telemetry_not_modified(aresponses: ResponsesMockServer
         "unit-1", measure="flow_temperature", from_dt=datetime(2026, 1, 14), to_dt=datetime(2026, 1, 14, 23)
     )
     assert values == []
-
-
-# ---------------------------------------------------------------------------
-# Models: edge cases in from_api
-# ---------------------------------------------------------------------------
 
 
 def test_ata_unit_invalid_float_value() -> None:
@@ -248,11 +221,6 @@ def test_atw_unit_zone2_fields_parsed() -> None:
     assert unit.room_temperature_zone2 == 18.0
 
 
-# ---------------------------------------------------------------------------
-# Auth: _exchange_code and refresh with failed HTTP
-# ---------------------------------------------------------------------------
-
-
 def _make_mock_response(status: int, json_data: dict[str, object] | None = None) -> tuple[MagicMock, MagicMock]:
     """Create a properly set up aiohttp mock response context manager."""
     mock_resp = MagicMock()
@@ -308,3 +276,121 @@ async def test_auth_exchange_code_stores_tokens() -> None:
         with patch.object(session, "post", return_value=mock_cm):
             await auth._exchange_code("code", "verifier")
         assert auth.access_token == "acc"
+
+
+def test_generate_pkce_pair_returns_valid_pair() -> None:
+    """Test that _generate_pkce_pair returns a verifier and a SHA256 challenge."""
+    import base64
+    import hashlib
+
+    verifier, challenge = _generate_pkce_pair()
+
+    assert len(verifier) > 0
+    assert len(challenge) > 0
+    expected_challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    assert challenge == expected_challenge
+
+
+def test_generate_pkce_pair_returns_different_pairs() -> None:
+    """Test that each call to _generate_pkce_pair returns a unique pair."""
+    v1, c1 = _generate_pkce_pair()
+    v2, c2 = _generate_pkce_pair()
+    assert v1 != v2
+    assert c1 != c2
+
+
+async def test_auth_refresh_success_stores_tokens() -> None:
+    """Test that a successful token refresh stores the new tokens."""
+    async with aiohttp.ClientSession() as session:
+        auth = MelCloudHomeAuth(username="u", password="p", session=session)
+        auth._refresh_token = "valid_refresh_token"
+
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.json = AsyncMock(return_value={"access_token": "new_access", "refresh_token": "new_refresh", "expires_in": 3600})
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_cm.__aexit__ = AsyncMock(return_value=False)
+
+        with patch.object(session, "post", return_value=mock_cm):
+            await auth.refresh()
+
+        assert auth.access_token == "new_access"
+
+
+async def test_get_outdoor_temperature_malformed_data(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome) -> None:
+    """Test that get_outdoor_temperature returns None when the response is malformed."""
+    aresponses.add(
+        "mobile.bff.melcloudhome.com",
+        "/report/v1/trendsummary",
+        "GET",
+        aresponses.Response(
+            status=200,
+            text=json.dumps([{"datasets": [{"label": "OUTDOOR_TEMPERATURE", "data": [{"x": "2026-01-14", "y": "not_a_number"}]}]}]),
+            headers={"Content-Type": "application/json"},
+        ),
+    )
+    temp = await melcloudhome_client.get_outdoor_temperature("unit-1")
+    assert temp is None
+
+
+def test_ata_unit_invalid_rssi_string() -> None:
+    """Test that an invalid rssi value (non-numeric string) is handled as None."""
+    raw = {
+        "id": "unit-x",
+        "givenDisplayName": "Test",
+        "settings": [],
+        "rssi": "not-an-int",
+    }
+    unit = ATAUnit.model_validate(raw)
+    assert unit.rssi is None
+
+
+def test_ata_unit_rssi_none_string() -> None:
+    """Test that a None rssi (converted to 'None' string) is handled as None."""
+    raw: dict[str, object] = {
+        "id": "unit-x",
+        "givenDisplayName": "Test",
+        "settings": [],
+        "rssi": None,
+    }
+    unit = ATAUnit.model_validate(raw)
+    assert unit.rssi is None
+
+
+def test_atw_unit_invalid_float_temperature() -> None:
+    """Test that an invalid float temperature value is handled as None."""
+    raw = {
+        "id": "unit-atw",
+        "givenDisplayName": "Test",
+        "settings": [
+            {"name": "SetTemperatureZone1", "value": "not_a_float"},
+        ],
+    }
+    unit = ATWUnit.model_validate(raw)
+    assert unit.set_temperature_zone1 is None
+
+
+def test_atw_unit_invalid_rssi_string() -> None:
+    """Test that an invalid ATW rssi value is handled as None."""
+    raw = {
+        "id": "unit-atw",
+        "givenDisplayName": "Test",
+        "settings": [],
+        "rssi": "not-an-int",
+    }
+    unit = ATWUnit.model_validate(raw)
+    assert unit.rssi is None
+
+
+def test_atw_unit_rssi_none_string() -> None:
+    """Test that a None ATW rssi (converted to 'None' string) is handled as None."""
+    raw: dict[str, object] = {
+        "id": "unit-atw",
+        "givenDisplayName": "Test",
+        "settings": [],
+        "rssi": None,
+    }
+    unit = ATWUnit.model_validate(raw)
+    assert unit.rssi is None
