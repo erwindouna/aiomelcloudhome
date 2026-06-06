@@ -1,7 +1,7 @@
 """Asynchronous Python client for Melcloud Home."""
 
 from .aiomelcloudhome import MELCloudHome
-from .auth import MelCloudHomeAuth
+from .auth import AbstractAuth, MelCloudHomeAuth, StaticTokenAuth
 from .exceptions import (
     MelCloudHomeAuthenticationError,
     MelCloudHomeConnectionError,
@@ -39,6 +39,7 @@ __all__ = [
     "ATWUnit",
     "ATWUnitControl",
     "ATWZoneMode",
+    "AbstractAuth",
     "Building",
     "MELCloudHome",
     "MelCloudHomeAuth",
@@ -47,5 +48,6 @@ __all__ = [
     "MelCloudHomeError",
     "MelCloudHomeNotFoundError",
     "MelCloudHomeTimeoutError",
+    "StaticTokenAuth",
     "UserContext",
 ]

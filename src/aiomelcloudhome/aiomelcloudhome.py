@@ -12,7 +12,7 @@ from yarl import URL
 
 from aiomelcloudhome.models.telemetry import MeasurementEntry, TelemetryValue
 
-from .auth import MelCloudHomeAuth
+from .auth import AbstractAuth, MelCloudHomeAuth, StaticTokenAuth
 from .exceptions import (
     MelCloudHomeAuthenticationError,
     MelCloudHomeConnectionError,
@@ -40,29 +40,39 @@ class MELCloudHome:
     def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
+        auth: AbstractAuth | None = None,
         username: str | None = None,
         password: str | None = None,
         access_token: str | None = None,
         session: ClientSession | None = None,
+        api_base: str = API_BASE,
         request_timeout: float = 10.0,
     ) -> None:
         """Initialize the MELCloudHome client.
 
-        Provide one of:
+        Provide one auth strategy:
+        - ``auth``: custom auth provider (recommended for Home Assistant usage).
         - ``username`` + ``password``: performs the full PKCE auth flow.
         - ``access_token``: uses the token directly (no PKCE flow).
         """
-        if username and password:
-            self._auth = MelCloudHomeAuth(username, password)
-
-        self._access_token = access_token
-        self._request_timeout = request_timeout
         if session is not None:
             self._session = session
             self._close_session = False
         else:
             self._session = ClientSession()
             self._close_session = True
+
+        if auth is not None:
+            self._auth = auth
+        elif username and password:
+            self._auth = MelCloudHomeAuth(username, password, session=self._session)
+        elif access_token:
+            self._auth = StaticTokenAuth(access_token)
+        else:
+            raise ValueError("Provide auth, username/password, or access_token")
+
+        self._api_base = api_base
+        self._request_timeout = request_timeout
 
     async def _request(  # pylint: disable=too-many-arguments
         self,
@@ -74,8 +84,8 @@ class MELCloudHome:
         timeout: float | None = None,
     ) -> dict[str, Any]:
         """Make an authenticated API request with retry logic."""
-        token = self._access_token or await self._auth.async_get_access_token()
-        url = URL(API_BASE) / uri.lstrip("/")
+        token = await self._auth.async_get_access_token()
+        url = URL(self._api_base) / uri.lstrip("/")
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",

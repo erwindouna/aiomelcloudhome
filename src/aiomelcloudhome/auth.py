@@ -5,6 +5,7 @@ import hashlib
 import re
 import secrets
 import time
+from abc import ABC, abstractmethod
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
 from aiohttp import ClientResponseError, ClientSession
@@ -17,6 +18,33 @@ _CLIENT_ID = "homemobile"
 _REDIRECT_URI = "melcloudhome://"
 _SCOPES = "openid profile email offline_access IdentityServerApi"
 _TOKEN_REFRESH_BUFFER = 60
+
+
+class AbstractAuth(ABC):
+    """Abstract interface for obtaining valid access tokens."""
+
+    @abstractmethod
+    async def async_get_access_token(self) -> str:
+        """Return a valid OAuth2 access token."""
+
+    @abstractmethod
+    async def close(self) -> None:
+        """Close resources owned by the auth implementation."""
+
+
+class StaticTokenAuth(AbstractAuth):
+    """Auth adapter that always returns a fixed access token."""
+
+    def __init__(self, access_token: str) -> None:
+        """Initialize with a static access token."""
+        self._access_token = access_token
+
+    async def async_get_access_token(self) -> str:
+        """Return the configured access token."""
+        return self._access_token
+
+    async def close(self) -> None:
+        """Close resources owned by this auth implementation."""
 
 
 def _generate_pkce_pair() -> tuple[str, str]:
@@ -35,7 +63,7 @@ def _parse_token_response(token_data: dict[str, object]) -> tuple[str, str, floa
     return access_token, refresh_token, time.monotonic() + expires_in
 
 
-class MelCloudHomeAuth:
+class MelCloudHomeAuth(AbstractAuth):
     """Standalone OAuth 2.0 PKCE authentication using username and password."""
 
     def __init__(self, username: str, password: str, session: ClientSession | None = None) -> None:
@@ -208,9 +236,11 @@ class MelCloudHomeAuth:
         if not self.is_token_valid:
             await self.refresh()
 
-    async def async_get_access_token(self) -> str | None:
+    async def async_get_access_token(self) -> str:
         """Return a valid access token, refreshing or re-authenticating as needed."""
         await self.ensure_valid_token()
+        if not self._access_token:
+            raise MelCloudHomeAuthenticationError("No access token available")
         return self._access_token
 
     async def close(self) -> None:
