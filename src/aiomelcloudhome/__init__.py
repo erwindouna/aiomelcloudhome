@@ -1,6 +1,7 @@
 """Asynchronous Python client for Melcloud Home."""
 
 from .aiomelcloudhome import MELCloudHome
+from .auth import MelCloudHomeAuth
 from .exceptions import (
     MelCloudHomeAuthenticationError,
     MelCloudHomeConnectionError,
@@ -13,11 +14,13 @@ from .models import (
     ATAFanSpeed,
     ATAOperationMode,
     ATAUnit,
+    ATAUnitControl,
     ATAVaneHorizontal,
     ATAVaneVertical,
     ATWCapabilities,
     ATWOperationMode,
     ATWUnit,
+    ATWUnitControl,
     ATWZoneMode,
     Building,
     UserContext,
@@ -28,14 +31,17 @@ __all__ = [
     "ATAFanSpeed",
     "ATAOperationMode",
     "ATAUnit",
+    "ATAUnitControl",
     "ATAVaneHorizontal",
     "ATAVaneVertical",
     "ATWCapabilities",
     "ATWOperationMode",
     "ATWUnit",
+    "ATWUnitControl",
     "ATWZoneMode",
     "Building",
     "MELCloudHome",
+    "MelCloudHomeAuth",
     "MelCloudHomeAuthenticationError",
     "MelCloudHomeConnectionError",
     "MelCloudHomeError",

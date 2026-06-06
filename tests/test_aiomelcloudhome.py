@@ -1,14 +1,15 @@
 """Tests for the MELCloudHome client."""
 
-from __future__ import annotations
-
 import json
 from datetime import datetime
 
 import pytest
 from aresponses import ResponsesMockServer
+from syrupy.assertion import SnapshotAssertion
 
-from aiomelcloudhome import MELCloudHome, MelCloudHomeAuthenticationError, MelCloudHomeNotFoundError, UserContext
+from aiomelcloudhome import MELCloudHome, MelCloudHomeAuthenticationError, MelCloudHomeNotFoundError
+from aiomelcloudhome.exceptions import MelCloudHomeConnectionError
+from aiomelcloudhome.models.ata import ATAOperationMode
 from tests import load_fixture
 
 
@@ -17,7 +18,7 @@ def _fixture_response(filename: str, status: int = 200) -> str:
     return json.dumps(load_fixture(filename))
 
 
-async def test_get_context(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome) -> None:
+async def test_get_context(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome, snapshot: SnapshotAssertion) -> None:
     """Test that get_context returns a parsed UserContext."""
     aresponses.add(
         "mobile.bff.melcloudhome.com",
@@ -30,51 +31,8 @@ async def test_get_context(aresponses: ResponsesMockServer, melcloudhome_client:
         ),
     )
 
-    ctx = await melcloudhome_client.get_context()
-
-    assert isinstance(ctx, UserContext)
-    assert len(ctx.buildings) == 1
-    assert ctx.buildings[0].name == "My Home"
-    assert len(ctx.buildings[0].air_to_air_units) == 1
-    assert len(ctx.buildings[0].air_to_water_units) == 1
-    aresponses.assert_plan_strictly_followed()
-
-
-async def test_get_context_ata_unit(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome) -> None:
-    """Test that ATA unit data is parsed correctly from context."""
-    aresponses.add(
-        "mobile.bff.melcloudhome.com",
-        "/context",
-        "GET",
-        aresponses.Response(status=200, text=_fixture_response("context.json"), headers={"Content-Type": "application/json"}),
-    )
-
-    ctx = await melcloudhome_client.get_context()
-    unit = ctx.buildings[0].air_to_air_units[0]
-
-    assert unit.id == "ata-unit-uuid-1"
-    assert unit.name == "Living Room AC"
-    assert unit.power is True
-    assert unit.set_temperature == 21.0
-    assert unit.room_temperature == 20.0
-    aresponses.assert_plan_strictly_followed()
-
-
-async def test_get_context_atw_unit(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome) -> None:
-    """Test that ATW unit data is parsed correctly from context."""
-    aresponses.add(
-        "mobile.bff.melcloudhome.com",
-        "/context",
-        "GET",
-        aresponses.Response(status=200, text=_fixture_response("context.json"), headers={"Content-Type": "application/json"}),
-    )
-
-    ctx = await melcloudhome_client.get_context()
-    unit = ctx.buildings[0].air_to_water_units[0]
-
-    assert unit.id == "atw-unit-uuid-1"
-    assert unit.power is True
-    assert unit.tank_water_temperature == 48.0
+    context = await melcloudhome_client.get_context()
+    assert context == snapshot
     aresponses.assert_plan_strictly_followed()
 
 
@@ -90,7 +48,7 @@ async def test_control_ata_unit(aresponses: ResponsesMockServer, melcloudhome_cl
     await melcloudhome_client.control_ata_unit(
         "ata-unit-uuid-1",
         power=True,
-        operation_mode="Heat",
+        operation_mode=ATAOperationMode.HEAT,
         set_temperature=22.0,
     )
     aresponses.assert_plan_strictly_followed()
@@ -113,7 +71,7 @@ async def test_control_atw_unit(aresponses: ResponsesMockServer, melcloudhome_cl
     aresponses.assert_plan_strictly_followed()
 
 
-async def test_get_energy_telemetry(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome) -> None:
+async def test_get_energy_telemetry(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome, snapshot: SnapshotAssertion) -> None:
     """Test that energy telemetry is fetched and parsed correctly."""
     aresponses.add(
         "mobile.bff.melcloudhome.com",
@@ -128,13 +86,13 @@ async def test_get_energy_telemetry(aresponses: ResponsesMockServer, melcloudhom
         to_dt=datetime(2026, 1, 14, 23, 59),
     )
 
-    assert len(values) == 3
-    assert values[0]["value"] == "100.0"
-    assert values[2]["value"] == "200.0"
+    assert values == snapshot
     aresponses.assert_plan_strictly_followed()
 
 
-async def test_get_energy_telemetry_not_modified(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome) -> None:
+async def test_get_energy_telemetry_not_modified(
+    aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome, snapshot: SnapshotAssertion
+) -> None:
     """Test that a 304 Not Modified response returns an empty list."""
     aresponses.add(
         "mobile.bff.melcloudhome.com",
@@ -148,11 +106,11 @@ async def test_get_energy_telemetry_not_modified(aresponses: ResponsesMockServer
         from_dt=datetime(2026, 1, 14, 0, 0),
         to_dt=datetime(2026, 1, 14, 23, 59),
     )
-    assert values == []
+    assert values == snapshot
     aresponses.assert_plan_strictly_followed()
 
 
-async def test_get_outdoor_temperature(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome) -> None:
+async def test_get_outdoor_temperature(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome, snapshot: SnapshotAssertion) -> None:
     """Test that outdoor temperature is fetched from the trend summary."""
     aresponses.add(
         "mobile.bff.melcloudhome.com",
@@ -162,7 +120,7 @@ async def test_get_outdoor_temperature(aresponses: ResponsesMockServer, melcloud
     )
 
     temp = await melcloudhome_client.get_outdoor_temperature("ata-unit-uuid-1")
-    assert temp == 12.0
+    assert temp == snapshot
     aresponses.assert_plan_strictly_followed()
 
 
@@ -180,7 +138,7 @@ async def test_get_outdoor_temperature_not_modified(aresponses: ResponsesMockSer
     aresponses.assert_plan_strictly_followed()
 
 
-async def test_get_actual_telemetry(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome) -> None:
+async def test_get_actual_telemetry(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome, snapshot: SnapshotAssertion) -> None:
     """Test that actual telemetry data is fetched and parsed correctly."""
     aresponses.add(
         "mobile.bff.melcloudhome.com",
@@ -196,32 +154,28 @@ async def test_get_actual_telemetry(aresponses: ResponsesMockServer, melcloudhom
         to_dt=datetime(2026, 1, 14, 11, 0),
     )
 
-    assert len(values) == 2
-    assert values[0]["value"] == "45.2"
+    assert values == snapshot
     aresponses.assert_plan_strictly_followed()
 
 
-async def test_authentication_error_on_401(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome) -> None:
-    """Test that a 401 response raises MelCloudHomeAuthenticationError."""
+@pytest.mark.parametrize(
+    ("status_code", "expected_exception"),
+    [
+        (401, MelCloudHomeAuthenticationError),
+        (404, MelCloudHomeNotFoundError),
+        (500, MelCloudHomeConnectionError),
+    ],
+)
+async def test_client_exceptions(
+    aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome, status_code: int, expected_exception: type
+) -> None:
+    """Test that client exceptions are raised for different status codes."""
     aresponses.add(
         "mobile.bff.melcloudhome.com",
         "/context",
         "GET",
-        aresponses.Response(status=401, text="Unauthorized"),
+        aresponses.Response(status=status_code, text="Error", headers={"Content-Type": "text/plain"}),
     )
 
-    with pytest.raises(MelCloudHomeAuthenticationError):
+    with pytest.raises(expected_exception):
         await melcloudhome_client.get_context()
-
-
-async def test_not_found_error_on_404(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome) -> None:
-    """Test that a 404 response raises MelCloudHomeNotFoundError."""
-    aresponses.add(
-        "mobile.bff.melcloudhome.com",
-        "/monitor/ataunit/nonexistent",
-        "PUT",
-        aresponses.Response(status=404, text="Not Found"),
-    )
-
-    with pytest.raises(MelCloudHomeNotFoundError):
-        await melcloudhome_client.control_ata_unit("nonexistent", power=True)

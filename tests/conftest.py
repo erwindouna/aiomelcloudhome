@@ -1,7 +1,5 @@
 """Pytest configuration and fixtures for aiomelcloudhome tests."""
 
-from __future__ import annotations
-
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock
 
@@ -30,9 +28,9 @@ async def melcloudhome_client_fixture() -> AsyncGenerator[MELCloudHome, None]:
             session=session,
             request_timeout=10.0,
         )
-        # Bypass real authentication for tests
         mock_auth = MagicMock()
         mock_auth.access_token = "mock_access_token"
+        mock_auth.async_get_access_token = AsyncMock(return_value="mock_access_token")
         mock_auth.ensure_valid_token = AsyncMock()
         client._session = session
         client._auth = mock_auth

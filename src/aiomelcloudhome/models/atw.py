@@ -1,13 +1,9 @@
 """Air-to-Water (ATW) models for Melcloud Home."""
 
-from __future__ import annotations
-
-from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import cast
+from typing import Any
 
-from mashumaro import field_options
-from mashumaro.mixins.orjson import DataClassORJSONMixin
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ATWOperationMode(StrEnum):
@@ -29,26 +25,60 @@ class ATWZoneMode(StrEnum):
     COOL_FLOW_TEMPERATURE = "CoolFlowTemperature"
 
 
-@dataclass(slots=True, kw_only=True)
-class ATWCapabilities(DataClassORJSONMixin):
+class ATWUnitControl(BaseModel):
+    """Control parameters for an Air-to-Water unit."""
+
+    power: bool | None = None
+    operation_mode_zone1: ATWZoneMode | None = None
+    operation_mode_zone2: ATWZoneMode | None = None
+    set_temperature_zone1: float | None = None
+    set_temperature_zone2: float | None = None
+    set_tank_water_temperature: float | None = None
+    forced_hot_water_mode: bool | None = None
+    in_standby_mode: bool | None = None
+    set_heat_flow_temperature_zone1: float | None = None
+    set_cool_flow_temperature_zone1: float | None = None
+    set_heat_flow_temperature_zone2: float | None = None
+    set_cool_flow_temperature_zone2: float | None = None
+
+    def to_api_payload(self) -> dict[str, Any]:
+        """Serialize to the API request body."""
+        return {
+            "power": self.power,
+            "setTemperatureZone1": self.set_temperature_zone1,
+            "setTemperatureZone2": self.set_temperature_zone2,
+            "operationModeZone1": self.operation_mode_zone1,
+            "operationModeZone2": self.operation_mode_zone2,
+            "setTankWaterTemperature": self.set_tank_water_temperature,
+            "forcedHotWaterMode": self.forced_hot_water_mode,
+            "inStandbyMode": self.in_standby_mode,
+            "setHeatFlowTemperatureZone1": self.set_heat_flow_temperature_zone1,
+            "setCoolFlowTemperatureZone1": self.set_cool_flow_temperature_zone1,
+            "setHeatFlowTemperatureZone2": self.set_heat_flow_temperature_zone2,
+            "setCoolFlowTemperatureZone2": self.set_cool_flow_temperature_zone2,
+        }
+
+
+class ATWCapabilities(BaseModel):
     """Capabilities of an Air-to-Water unit."""
 
-    has_hot_water: bool | None = field(default=None, metadata=field_options(alias="hasHotWater"))
-    has_zone2: bool | None = field(default=None, metadata=field_options(alias="hasZone2"))
-    has_half_degrees: bool | None = field(default=None, metadata=field_options(alias="hasHalfDegrees"))
-    has_cooling_mode: bool | None = field(default=None, metadata=field_options(alias="hasCoolingMode"))
-    min_set_tank_temperature: float | None = field(default=None, metadata=field_options(alias="minSetTankTemperature"))
-    max_set_tank_temperature: float | None = field(default=None, metadata=field_options(alias="maxSetTankTemperature"))
-    min_set_temperature_zone1: float | None = field(default=None, metadata=field_options(alias="minSetTemperatureZone1"))
-    max_set_temperature_zone1: float | None = field(default=None, metadata=field_options(alias="maxSetTemperatureZone1"))
-    min_set_temperature_zone2: float | None = field(default=None, metadata=field_options(alias="minSetTemperatureZone2"))
-    max_set_temperature_zone2: float | None = field(default=None, metadata=field_options(alias="maxSetTemperatureZone2"))
-    has_standby_mode: bool | None = field(default=None, metadata=field_options(alias="hasStandbyMode"))
-    has_energy_consumed_meter: bool | None = field(default=None, metadata=field_options(alias="hasEnergyConsumedMeter"))
+    model_config = ConfigDict(populate_by_name=True)
+
+    has_hot_water: bool | None = Field(default=None, alias="hasHotWater")
+    has_zone2: bool | None = Field(default=None, alias="hasZone2")
+    has_half_degrees: bool | None = Field(default=None, alias="hasHalfDegrees")
+    has_cooling_mode: bool | None = Field(default=None, alias="hasCoolingMode")
+    min_set_tank_temperature: float | None = Field(default=None, alias="minSetTankTemperature")
+    max_set_tank_temperature: float | None = Field(default=None, alias="maxSetTankTemperature")
+    min_set_temperature_zone1: float | None = Field(default=None, alias="minSetTemperatureZone1")
+    max_set_temperature_zone1: float | None = Field(default=None, alias="maxSetTemperatureZone1")
+    min_set_temperature_zone2: float | None = Field(default=None, alias="minSetTemperatureZone2")
+    max_set_temperature_zone2: float | None = Field(default=None, alias="maxSetTemperatureZone2")
+    has_standby_mode: bool | None = Field(default=None, alias="hasStandbyMode")
+    has_energy_consumed_meter: bool | None = Field(default=None, alias="hasEnergyConsumedMeter")
 
 
-@dataclass(slots=True, kw_only=True)
-class ATWUnit:
+class ATWUnit(BaseModel):
     """Represents an Air-to-Water unit."""
 
     id: str
@@ -56,82 +86,79 @@ class ATWUnit:
     power: bool | None = None
     in_standby_mode: bool | None = None
     operation_mode: ATWOperationMode | None = None
-    # Zone 1
     operation_mode_zone1: ATWZoneMode | None = None
     set_temperature_zone1: float | None = None
     room_temperature_zone1: float | None = None
-    # Zone 2
     has_zone2: bool | None = None
     operation_mode_zone2: ATWZoneMode | None = None
     set_temperature_zone2: float | None = None
     room_temperature_zone2: float | None = None
-    # Domestic hot water
     set_tank_water_temperature: float | None = None
     tank_water_temperature: float | None = None
     forced_hot_water_mode: bool | None = None
-    # Status
     is_in_error: bool | None = None
     rssi: int | None = None
     capabilities: ATWCapabilities | None = None
 
+    @field_validator("operation_mode_zone1", "operation_mode_zone2", mode="before")
     @classmethod
-    def from_api(cls, data: dict[str, object]) -> ATWUnit:
-        """Construct an ATWUnit from the raw API context response."""
-        settings: dict[str, str] = {s["name"]: s["value"] for s in cast("list[dict[str, str]]", data.get("settings", []))}
+    def _coerce_zone_mode(cls, v: Any) -> Any:
+        if v is None:
+            return None
+        try:
+            return ATWZoneMode(v)
+        except ValueError:
+            return None
 
-        capabilities: ATWCapabilities | None = None
-        if raw_caps := data.get("capabilities"):
-            capabilities = ATWCapabilities.from_dict(raw_caps)  # type: ignore[arg-type]
+    @field_validator(
+        "set_temperature_zone1",
+        "room_temperature_zone1",
+        "set_temperature_zone2",
+        "room_temperature_zone2",
+        "set_tank_water_temperature",
+        "tank_water_temperature",
+        mode="before",
+    )
+    @classmethod
+    def _coerce_float(cls, v: Any) -> Any:
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return None
 
-        def _bool(val: str | None) -> bool | None:
-            if val is None:
-                return None
-            return val.lower() == "true"
+    @field_validator("rssi", mode="before")
+    @classmethod
+    def _coerce_int(cls, v: Any) -> Any:
+        if v is None:
+            return None
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            return None
 
-        def _float(val: str | None) -> float | None:
-            if val is None:
-                return None
-            try:
-                return float(val)
-            except (ValueError, TypeError):
-                return None
-
-        def _int(val: str | None) -> int | None:
-            if val is None:
-                return None
-            try:
-                return int(val)
-            except (ValueError, TypeError):
-                return None
-
-        def _zone_mode(val: str | None) -> ATWZoneMode | None:
-            if val is None:
-                return None
-            try:
-                return ATWZoneMode(val)
-            except ValueError:
-                return None
-
-        has_zone2_raw = settings.get("HasZone2")
-        has_zone2 = has_zone2_raw not in (None, "0", "False", "false") if has_zone2_raw is not None else None
-
-        return cls(
-            id=str(data["id"]),
-            name=str(data.get("givenDisplayName", "")),
-            power=_bool(settings.get("Power")),
-            in_standby_mode=_bool(settings.get("InStandbyMode")),
-            operation_mode=ATWOperationMode(settings["OperationMode"]) if "OperationMode" in settings else None,
-            operation_mode_zone1=_zone_mode(settings.get("OperationModeZone1")),
-            set_temperature_zone1=_float(settings.get("SetTemperatureZone1")),
-            room_temperature_zone1=_float(settings.get("RoomTemperatureZone1")),
-            has_zone2=has_zone2,
-            operation_mode_zone2=_zone_mode(settings.get("OperationModeZone2")),
-            set_temperature_zone2=_float(settings.get("SetTemperatureZone2")),
-            room_temperature_zone2=_float(settings.get("RoomTemperatureZone2")),
-            set_tank_water_temperature=_float(settings.get("SetTankWaterTemperature")),
-            tank_water_temperature=_float(settings.get("TankWaterTemperature")),
-            forced_hot_water_mode=_bool(settings.get("ForcedHotWaterMode")),
-            is_in_error=_bool(settings.get("IsInError")),
-            rssi=_int(str(data["rssi"])) if "rssi" in data else None,
-            capabilities=capabilities,
-        )
+    @model_validator(mode="before")
+    @classmethod
+    def _from_api(cls, data: dict[str, Any]) -> dict[str, Any]:
+        settings: dict[str, str] = {setting["name"]: setting["value"] for setting in data.get("settings", [])}
+        return {
+            "id": str(data["id"]),
+            "name": data.get("givenDisplayName", ""),
+            "power": settings.get("Power"),
+            "in_standby_mode": settings.get("InStandbyMode"),
+            "operation_mode": settings.get("OperationMode"),
+            "operation_mode_zone1": settings.get("OperationModeZone1"),
+            "set_temperature_zone1": settings.get("SetTemperatureZone1"),
+            "room_temperature_zone1": settings.get("RoomTemperatureZone1"),
+            "has_zone2": settings.get("HasZone2"),
+            "operation_mode_zone2": settings.get("OperationModeZone2"),
+            "set_temperature_zone2": settings.get("SetTemperatureZone2"),
+            "room_temperature_zone2": settings.get("RoomTemperatureZone2"),
+            "set_tank_water_temperature": settings.get("SetTankWaterTemperature"),
+            "tank_water_temperature": settings.get("TankWaterTemperature"),
+            "forced_hot_water_mode": settings.get("ForcedHotWaterMode"),
+            "is_in_error": settings.get("IsInError"),
+            "rssi": data.get("rssi"),
+            "capabilities": ATWCapabilities.model_validate(data.get("capabilities")) if data.get("capabilities") else None,
+        }
