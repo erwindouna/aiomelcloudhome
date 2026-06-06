@@ -1,13 +1,9 @@
 """Air-to-Air (ATA) models for Melcloud Home."""
 
-from __future__ import annotations
-
-from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import cast
+from typing import Any
 
-from mashumaro import field_options
-from mashumaro.mixins.orjson import DataClassORJSONMixin
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ATAOperationMode(StrEnum):
@@ -55,31 +51,56 @@ class ATAVaneHorizontal(StrEnum):
     RIGHT = "Right"
 
 
-@dataclass(slots=True, kw_only=True)
-class ATACapabilities(DataClassORJSONMixin):
+class ATAUnitControl(BaseModel):
+    """Control parameters for an Air-to-Air unit."""
+
+    power: bool | None = None
+    operation_mode: ATAOperationMode | None = None
+    set_temperature: float | None = None
+    set_fan_speed: ATAFanSpeed | None = None
+    vane_vertical_direction: ATAVaneVertical | None = None
+    vane_horizontal_direction: ATAVaneHorizontal | None = None
+    in_standby_mode: bool | None = None
+
+    def to_api_payload(self) -> dict[str, Any]:
+        """Serialize to the API request body."""
+        return {
+            "power": self.power,
+            "operationMode": self.operation_mode,
+            "setTemperature": self.set_temperature,
+            "setFanSpeed": self.set_fan_speed,
+            "vaneVerticalDirection": self.vane_vertical_direction,
+            "vaneHorizontalDirection": self.vane_horizontal_direction,
+            "temperatureIncrementOverride": None,
+            "inStandbyMode": self.in_standby_mode,
+        }
+
+
+class ATACapabilities(BaseModel):
     """Capabilities of an Air-to-Air unit."""
 
-    number_of_fan_speeds: int | None = field(default=None, metadata=field_options(alias="numberOfFanSpeeds"))
-    min_temp_heat: float | None = field(default=None, metadata=field_options(alias="minTempHeat"))
-    max_temp_heat: float | None = field(default=None, metadata=field_options(alias="maxTempHeat"))
-    min_temp_cool: float | None = field(default=None, metadata=field_options(alias="minTempCool"))
-    max_temp_cool: float | None = field(default=None, metadata=field_options(alias="maxTempCool"))
-    min_temp_auto: float | None = field(default=None, metadata=field_options(alias="minTempAutomatic"))
-    max_temp_auto: float | None = field(default=None, metadata=field_options(alias="maxTempAutomatic"))
-    has_half_degree_increments: bool | None = field(default=None, metadata=field_options(alias="hasHalfDegreeIncrements"))
-    has_cool_operation_mode: bool | None = field(default=None, metadata=field_options(alias="hasCoolOperationMode"))
-    has_dry_operation_mode: bool | None = field(default=None, metadata=field_options(alias="hasDryOperationMode"))
-    has_fan_operation_mode: bool | None = field(default=None, metadata=field_options(alias="hasFanOperationMode"))
-    has_auto_operation_mode: bool | None = field(default=None, metadata=field_options(alias="hasAutoOperationMode"))
-    has_outdoor_temperature_sensor: bool | None = field(default=None, metadata=field_options(alias="hasOutdoorTemperatureSensor"))
-    has_energy_consumed_meter: bool | None = field(default=None, metadata=field_options(alias="hasEnergyConsumedMeter"))
-    has_vane_vertical: bool | None = field(default=None, metadata=field_options(alias="hasVaneVertical"))
-    has_vane_horizontal: bool | None = field(default=None, metadata=field_options(alias="hasVaneHorizontal"))
-    has_standby_mode: bool | None = field(default=None, metadata=field_options(alias="hasStandbyMode"))
+    model_config = ConfigDict(populate_by_name=True)
+
+    number_of_fan_speeds: int | None = Field(default=None, alias="numberOfFanSpeeds")
+    min_temp_heat: float | None = Field(default=None, alias="minTempHeat")
+    max_temp_heat: float | None = Field(default=None, alias="maxTempHeat")
+    min_temp_cool: float | None = Field(default=None, alias="minTempCool")
+    max_temp_cool: float | None = Field(default=None, alias="maxTempCool")
+    min_temp_auto: float | None = Field(default=None, alias="minTempAutomatic")
+    max_temp_auto: float | None = Field(default=None, alias="maxTempAutomatic")
+    has_half_degree_increments: bool | None = Field(default=None, alias="hasHalfDegreeIncrements")
+    has_cool_operation_mode: bool | None = Field(default=None, alias="hasCoolOperationMode")
+    has_dry_operation_mode: bool | None = Field(default=None, alias="hasDryOperationMode")
+    has_fan_operation_mode: bool | None = Field(default=None, alias="hasFanOperationMode")
+    has_auto_operation_mode: bool | None = Field(default=None, alias="hasAutoOperationMode")
+    has_outdoor_temperature_sensor: bool | None = Field(default=None, alias="hasOutdoorTemperatureSensor")
+    has_energy_consumed_meter: bool | None = Field(default=None, alias="hasEnergyConsumedMeter")
+    has_vane_vertical: bool | None = Field(default=None, alias="hasVaneVertical")
+    has_vane_horizontal: bool | None = Field(default=None, alias="hasVaneHorizontal")
+    has_standby_mode: bool | None = Field(default=None, alias="hasStandbyMode")
 
 
-@dataclass(slots=True, kw_only=True)
-class ATAUnit:
+class ATAUnit(BaseModel):
     """Represents an Air-to-Air unit."""
 
     id: str
@@ -96,48 +117,42 @@ class ATAUnit:
     rssi: int | None = None
     capabilities: ATACapabilities | None = None
 
+    @field_validator("set_temperature", "room_temperature", mode="before")
     @classmethod
-    def from_api(cls, data: dict[str, object]) -> ATAUnit:
-        """Construct an ATAUnit from the raw API context response."""
-        settings: dict[str, str] = {s["name"]: s["value"] for s in cast("list[dict[str, str]]", data.get("settings", []))}
+    def _coerce_float(cls, v: Any) -> Any:
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return None
 
-        capabilities: ATACapabilities | None = None
-        if raw_caps := data.get("capabilities"):
-            capabilities = ATACapabilities.from_dict(raw_caps)  # type: ignore[arg-type]
+    @field_validator("rssi", mode="before")
+    @classmethod
+    def _coerce_int(cls, v: Any) -> Any:
+        if v is None:
+            return None
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            return None
 
-        def _bool(val: str | None) -> bool | None:
-            if val is None:
-                return None
-            return val.lower() == "true"
-
-        def _float(val: str | None) -> float | None:
-            if val is None:
-                return None
-            try:
-                return float(val)
-            except (ValueError, TypeError):
-                return None
-
-        def _int(val: str | None) -> int | None:
-            if val is None:
-                return None
-            try:
-                return int(val)
-            except (ValueError, TypeError):
-                return None
-
-        return cls(
-            id=str(data["id"]),
-            name=str(data.get("givenDisplayName", "")),
-            power=_bool(settings.get("Power")),
-            operation_mode=ATAOperationMode(settings["OperationMode"]) if "OperationMode" in settings else None,
-            set_temperature=_float(settings.get("SetTemperature")),
-            room_temperature=_float(settings.get("RoomTemperature")),
-            set_fan_speed=ATAFanSpeed(settings["SetFanSpeed"]) if "SetFanSpeed" in settings else None,
-            vane_vertical_direction=ATAVaneVertical(settings["VaneVerticalDirection"]) if "VaneVerticalDirection" in settings else None,
-            vane_horizontal_direction=ATAVaneHorizontal(settings["VaneHorizontalDirection"]) if "VaneHorizontalDirection" in settings else None,
-            in_standby_mode=_bool(settings.get("InStandbyMode")),
-            is_in_error=_bool(settings.get("IsInError")),
-            rssi=_int(str(data["rssi"])) if "rssi" in data else None,
-            capabilities=capabilities,
-        )
+    @model_validator(mode="before")
+    @classmethod
+    def _from_api(cls, data: dict[str, Any]) -> dict[str, Any]:
+        settings: dict[str, str] = {setting["name"]: setting["value"] for setting in data.get("settings", [])}
+        return {
+            "id": str(data["id"]),
+            "name": data.get("givenDisplayName", ""),
+            "power": settings.get("Power"),
+            "operation_mode": settings.get("OperationMode"),
+            "set_temperature": settings.get("SetTemperature"),
+            "room_temperature": settings.get("RoomTemperature"),
+            "set_fan_speed": settings.get("SetFanSpeed"),
+            "vane_vertical_direction": settings.get("VaneVerticalDirection"),
+            "vane_horizontal_direction": settings.get("VaneHorizontalDirection"),
+            "in_standby_mode": settings.get("InStandbyMode"),
+            "is_in_error": settings.get("IsInError"),
+            "rssi": data.get("rssi"),
+            "capabilities": ATACapabilities.model_validate(data.get("capabilities")) if data.get("capabilities") else None,
+        }

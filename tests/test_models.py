@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
 import pytest
 
@@ -20,7 +20,7 @@ def context_data_fixture() -> dict[str, Any]:
 
 def test_user_context_from_api(context_data: dict[str, Any]) -> None:
     """Test building a UserContext from the API response."""
-    ctx = UserContext.from_api(context_data)
+    ctx = UserContext.model_validate(context_data)
     assert len(ctx.buildings) == 1
     building = ctx.buildings[0]
     assert building.id == "building-uuid-1"
@@ -32,7 +32,7 @@ def test_user_context_from_api(context_data: dict[str, Any]) -> None:
 def test_ata_unit_from_api(context_data: dict[str, Any]) -> None:
     """Test parsing an ATA unit from the API settings array."""
     raw = context_data["buildings"][0]["airToAirUnits"][0]
-    unit = ATAUnit.from_api(raw)
+    unit = ATAUnit.model_validate(raw)
 
     assert unit.id == "ata-unit-uuid-1"
     assert unit.name == "Living Room AC"
@@ -51,7 +51,7 @@ def test_ata_unit_from_api(context_data: dict[str, Any]) -> None:
 def test_ata_unit_capabilities(context_data: dict[str, Any]) -> None:
     """Test that ATA unit capabilities are parsed correctly."""
     raw = context_data["buildings"][0]["airToAirUnits"][0]
-    unit = ATAUnit.from_api(raw)
+    unit = ATAUnit.model_validate(raw)
     caps = unit.capabilities
     assert caps is not None
     assert caps.number_of_fan_speeds == 5
@@ -65,7 +65,7 @@ def test_ata_unit_capabilities(context_data: dict[str, Any]) -> None:
 def test_atw_unit_from_api(context_data: dict[str, Any]) -> None:
     """Test parsing an ATW unit from the API settings array."""
     raw = context_data["buildings"][0]["airToWaterUnits"][0]
-    unit = ATWUnit.from_api(raw)
+    unit = ATWUnit.model_validate(raw)
 
     assert unit.id == "atw-unit-uuid-1"
     assert unit.name == "Heat Pump"
@@ -86,7 +86,7 @@ def test_atw_unit_from_api(context_data: dict[str, Any]) -> None:
 def test_atw_unit_capabilities(context_data: dict[str, Any]) -> None:
     """Test that ATW unit capabilities are parsed correctly."""
     raw = context_data["buildings"][0]["airToWaterUnits"][0]
-    unit = ATWUnit.from_api(raw)
+    unit = ATWUnit.model_validate(raw)
     caps = unit.capabilities
     assert caps is not None
     assert caps.has_hot_water is True
@@ -109,7 +109,7 @@ def test_user_context_guest_buildings() -> None:
             }
         ],
     }
-    ctx = UserContext.from_api(cast("dict[str, object]", data))
+    ctx = UserContext.model_validate(data)
     assert len(ctx.buildings) == 1
     assert ctx.buildings[0].id == "guest-building-1"
 
@@ -122,7 +122,7 @@ def test_building_from_api() -> None:
         "airToAirUnits": [],
         "airToWaterUnits": [],
     }
-    building = Building.from_api(cast("dict[str, object]", data))
+    building = Building.model_validate(data)
     assert building.id == "test-building"
     assert not building.air_to_air_units
     assert not building.air_to_water_units
@@ -155,7 +155,7 @@ def test_ata_unit_missing_optional_settings() -> None:
             {"name": "Power", "value": "False"},
         ],
     }
-    unit = ATAUnit.from_api(cast("dict[str, object]", raw))
+    unit = ATAUnit.model_validate(raw)
     assert unit.id == "minimal-unit"
     assert unit.power is False
     assert unit.operation_mode is None

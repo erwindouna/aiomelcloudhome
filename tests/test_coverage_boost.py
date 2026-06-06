@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -100,7 +99,7 @@ def test_ata_unit_invalid_rssi_string() -> None:
         "settings": [],
         "rssi": "not-an-int",
     }
-    unit = ATAUnit.from_api(cast("dict[str, object]", raw))
+    unit = ATAUnit.model_validate(raw)
     assert unit.rssi is None
 
 
@@ -112,7 +111,7 @@ def test_ata_unit_rssi_none_string() -> None:
         "settings": [],
         "rssi": None,
     }
-    unit = ATAUnit.from_api(raw)
+    unit = ATAUnit.model_validate(raw)
     assert unit.rssi is None
 
 
@@ -130,7 +129,7 @@ def test_atw_unit_invalid_float_temperature() -> None:
             {"name": "SetTemperatureZone1", "value": "not_a_float"},
         ],
     }
-    unit = ATWUnit.from_api(cast("dict[str, object]", raw))
+    unit = ATWUnit.model_validate(raw)
     assert unit.set_temperature_zone1 is None
 
 
@@ -142,7 +141,7 @@ def test_atw_unit_invalid_rssi_string() -> None:
         "settings": [],
         "rssi": "not-an-int",
     }
-    unit = ATWUnit.from_api(cast("dict[str, object]", raw))
+    unit = ATWUnit.model_validate(raw)
     assert unit.rssi is None
 
 
@@ -154,5 +153,5 @@ def test_atw_unit_rssi_none_string() -> None:
         "settings": [],
         "rssi": None,
     }
-    unit = ATWUnit.from_api(raw)
+    unit = ATWUnit.model_validate(raw)
     assert unit.rssi is None

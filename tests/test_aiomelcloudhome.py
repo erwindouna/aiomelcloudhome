@@ -9,6 +9,7 @@ import pytest
 from aresponses import ResponsesMockServer
 
 from aiomelcloudhome import MELCloudHome, MelCloudHomeAuthenticationError, MelCloudHomeNotFoundError, UserContext
+from aiomelcloudhome.models.ata import ATAOperationMode
 from tests import load_fixture
 
 
@@ -90,7 +91,7 @@ async def test_control_ata_unit(aresponses: ResponsesMockServer, melcloudhome_cl
     await melcloudhome_client.control_ata_unit(
         "ata-unit-uuid-1",
         power=True,
-        operation_mode="Heat",
+        operation_mode=ATAOperationMode.HEAT,
         set_temperature=22.0,
     )
     aresponses.assert_plan_strictly_followed()
@@ -129,8 +130,8 @@ async def test_get_energy_telemetry(aresponses: ResponsesMockServer, melcloudhom
     )
 
     assert len(values) == 3
-    assert values[0]["value"] == "100.0"
-    assert values[2]["value"] == "200.0"
+    assert values[0].value == "100.0"
+    assert values[2].value == "200.0"
     aresponses.assert_plan_strictly_followed()
 
 

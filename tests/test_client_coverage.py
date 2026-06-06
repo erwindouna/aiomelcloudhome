@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import socket
 from datetime import datetime
-from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
 from aresponses import ResponsesMockServer
+from pydantic import ValidationError
 
 from aiomelcloudhome import MELCloudHome, MelCloudHomeAuthenticationError, MelCloudHomeConnectionError, MelCloudHomeTimeoutError
 from aiomelcloudhome.auth import MelCloudHomeAuth
@@ -28,14 +28,13 @@ async def test_client_creates_own_session() -> None:
         mock_auth.authenticate = AsyncMock()
         mock_auth.access_token = "tok"
         mock_auth.ensure_valid_token = AsyncMock()
+        mock_auth.close = AsyncMock()
         mock_auth_class.return_value = mock_auth
 
         client = MELCloudHome(username="u@example.com", password="p")
         async with client as c:
             assert c._session is not None
             assert c._close_session is True
-
-        mock_auth.authenticate.assert_called_once()
 
 
 async def test_client_uses_provided_session() -> None:
@@ -44,6 +43,7 @@ async def test_client_uses_provided_session() -> None:
         mock_auth = MagicMock()
         mock_auth.authenticate = AsyncMock()
         mock_auth.access_token = "tok"
+        mock_auth.close = AsyncMock()
         mock_auth_class.return_value = mock_auth
 
         async with aiohttp.ClientSession() as session:
@@ -180,7 +180,7 @@ def test_ata_unit_invalid_float_value() -> None:
         "givenDisplayName": "Test",
         "settings": [{"name": "SetTemperature", "value": "not_a_number"}],
     }
-    unit = ATAUnit.from_api(cast("dict[str, object]", raw))
+    unit = ATAUnit.model_validate(raw)
     assert unit.set_temperature is None
 
 
@@ -191,8 +191,8 @@ def test_ata_unit_unknown_operation_mode() -> None:
         "givenDisplayName": "Test",
         "settings": [{"name": "OperationMode", "value": "Auto"}],
     }
-    with pytest.raises(ValueError, match="Auto"):
-        ATAUnit.from_api(cast("dict[str, object]", raw))
+    with pytest.raises(ValidationError):
+        ATAUnit.model_validate(raw)
 
 
 def test_atw_unit_unknown_zone_mode_returns_none() -> None:
@@ -202,7 +202,7 @@ def test_atw_unit_unknown_zone_mode_returns_none() -> None:
         "givenDisplayName": "Test ATW",
         "settings": [{"name": "OperationModeZone1", "value": "UnknownMode"}],
     }
-    unit = ATWUnit.from_api(cast("dict[str, object]", raw))
+    unit = ATWUnit.model_validate(raw)
     assert unit.operation_mode_zone1 is None
 
 
@@ -214,7 +214,7 @@ def test_atw_unit_has_zone2_false_variants() -> None:
             "givenDisplayName": "Test",
             "settings": [{"name": "HasZone2", "value": false_val}],
         }
-        unit = ATWUnit.from_api(cast("dict[str, object]", raw))
+        unit = ATWUnit.model_validate(raw)
         assert unit.has_zone2 is False, f"Expected False for HasZone2={false_val!r}"
 
 
@@ -225,7 +225,7 @@ def test_atw_unit_has_zone2_true() -> None:
         "givenDisplayName": "Test",
         "settings": [{"name": "HasZone2", "value": "True"}],
     }
-    unit = ATWUnit.from_api(cast("dict[str, object]", raw))
+    unit = ATWUnit.model_validate(raw)
     assert unit.has_zone2 is True
 
 
@@ -241,7 +241,7 @@ def test_atw_unit_zone2_fields_parsed() -> None:
             {"name": "RoomTemperatureZone2", "value": "18"},
         ],
     }
-    unit = ATWUnit.from_api(cast("dict[str, object]", raw))
+    unit = ATWUnit.model_validate(raw)
     assert unit.has_zone2 is True
     assert unit.operation_mode_zone2 == ATWZoneMode.HEAT_FLOW_TEMPERATURE
     assert unit.set_temperature_zone2 == 19.0

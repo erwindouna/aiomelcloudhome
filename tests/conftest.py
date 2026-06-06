@@ -33,6 +33,7 @@ async def melcloudhome_client_fixture() -> AsyncGenerator[MELCloudHome, None]:
         # Bypass real authentication for tests
         mock_auth = MagicMock()
         mock_auth.access_token = "mock_access_token"
+        mock_auth.async_get_access_token = AsyncMock(return_value="mock_access_token")
         mock_auth.ensure_valid_token = AsyncMock()
         client._session = session
         client._auth = mock_auth
