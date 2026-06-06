@@ -1,6 +1,6 @@
 [project]
 name = "aiomelcloudhome"
-version = "0.1.0"
+version = "0.1.1"
 description = "Asynchronous Python client for the Melcloud Home API"
 authors = [{ name = "Erwin Douna", email = "e.douna@gmail.com" }]
 requires-python = ">=3.11,<4"
@@ -23,6 +23,7 @@ classifiers = [
     "Natural Language :: English",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: 3",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]

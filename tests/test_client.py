@@ -11,7 +11,7 @@ from aresponses import ResponsesMockServer
 from pydantic import ValidationError
 
 from aiomelcloudhome import MELCloudHome, MelCloudHomeAuthenticationError, MelCloudHomeConnectionError, MelCloudHomeTimeoutError
-from aiomelcloudhome.auth import MelCloudHomeAuth, _generate_pkce_pair
+from aiomelcloudhome.auth import AbstractAuth, MelCloudHomeAuth, _generate_pkce_pair
 from aiomelcloudhome.models.ata import ATAUnit
 from aiomelcloudhome.models.atw import ATWUnit, ATWZoneMode
 
@@ -46,6 +46,43 @@ async def test_client_uses_provided_session() -> None:
             async with client as c:
                 assert c._close_session is False
                 assert c._session is session
+
+
+class _InjectedAuth(AbstractAuth):
+    """Simple injected auth provider for constructor and request tests."""
+
+    def __init__(self, token: str) -> None:
+        """Initialize injected auth with a fixed token."""
+        self._token = token
+
+    async def async_get_access_token(self) -> str:
+        """Return the fixed access token."""
+        return self._token
+
+    async def close(self) -> None:
+        """Close resources owned by this auth implementation."""
+
+
+async def test_client_uses_injected_auth(aresponses: ResponsesMockServer) -> None:
+    """Test that a custom auth provider can be injected into the client."""
+    aresponses.add(
+        "mobile.bff.melcloudhome.com",
+        "/context",
+        "GET",
+        aresponses.Response(status=200, text=json.dumps({"buildings": [], "guestBuildings": []}), headers={"Content-Type": "application/json"}),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        client = MELCloudHome(auth=_InjectedAuth("injected_token"), session=session)
+        ctx = await client.get_context()
+        assert ctx.buildings == []
+
+
+async def test_client_requires_auth_strategy() -> None:
+    """Test that constructor enforces at least one auth strategy."""
+    async with aiohttp.ClientSession() as session:
+        with pytest.raises(ValueError, match="Provide auth"):
+            MELCloudHome(session=session)
 
 
 @pytest.mark.parametrize(
