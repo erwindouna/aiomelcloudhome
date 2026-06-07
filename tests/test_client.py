@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import aiohttp
 import pytest
 from aresponses import ResponsesMockServer
-from pydantic import ValidationError
 
 from aiomelcloudhome import MELCloudHome, MelCloudHomeAuthenticationError, MelCloudHomeConnectionError, MelCloudHomeTimeoutError
 from aiomelcloudhome.auth import AbstractAuth, MelCloudHomeAuth, _generate_pkce_pair
@@ -201,8 +200,8 @@ def test_ata_unit_unknown_operation_mode() -> None:
         "givenDisplayName": "Test",
         "settings": [{"name": "OperationMode", "value": "Auto"}],
     }
-    with pytest.raises(ValidationError):
-        ATAUnit.model_validate(raw)
+    unit = ATAUnit.model_validate(raw)
+    assert unit.operation_mode is None
 
 
 def test_atw_unit_unknown_zone_mode_returns_none() -> None:

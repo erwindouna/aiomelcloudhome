@@ -91,3 +91,23 @@ def test_ata_unit_missing_optional_settings(snapshot: SnapshotAssertion) -> None
     }
     unit = ATAUnit.model_validate(raw)
     assert unit == snapshot
+
+
+def test_ata_unit_exports_settings(context_data: dict[str, Any], snapshot: SnapshotAssertion) -> None:
+    """Test that ATA settings are exported in both raw and mapped forms."""
+    raw = context_data["buildings"][0]["airToAirUnits"][0]
+    unit = ATAUnit.model_validate(raw)
+    assert {
+        "raw_settings": unit.raw_settings,
+        "settings": unit.settings,
+    } == snapshot
+
+
+def test_atw_unit_exports_settings(context_data: dict[str, Any], snapshot: SnapshotAssertion) -> None:
+    """Test that ATW settings are exported in both raw and mapped forms."""
+    raw = context_data["buildings"][0]["airToWaterUnits"][0]
+    unit = ATWUnit.model_validate(raw)
+    assert {
+        "raw_settings": unit.raw_settings,
+        "settings": unit.settings,
+    } == snapshot
