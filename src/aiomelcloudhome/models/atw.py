@@ -1,9 +1,11 @@
 """Air-to-Water (ATW) models for Melcloud Home."""
 
 from enum import StrEnum
-from typing import Any
+from typing import Any, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+_T = TypeVar("_T", bound=StrEnum)
 
 
 class ATWOperationMode(StrEnum):
@@ -97,18 +99,10 @@ class ATWUnit(BaseModel):
     tank_water_temperature: float | None = None
     forced_hot_water_mode: bool | None = None
     is_in_error: bool | None = None
+    raw_settings: list[dict[str, str]] = Field(default_factory=list, repr=False)
+    settings: dict[str, Any] = Field(default_factory=dict, repr=False)
     rssi: int | None = None
     capabilities: ATWCapabilities | None = None
-
-    @field_validator("operation_mode_zone1", "operation_mode_zone2", mode="before")
-    @classmethod
-    def _coerce_zone_mode(cls, v: Any) -> Any:
-        if v is None:
-            return None
-        try:
-            return ATWZoneMode(v)
-        except ValueError:
-            return None
 
     @field_validator(
         "set_temperature_zone1",
@@ -141,7 +135,35 @@ class ATWUnit(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _from_api(cls, data: dict[str, Any]) -> dict[str, Any]:
-        settings: dict[str, str] = {setting["name"]: setting["value"] for setting in data.get("settings", [])}
+        raw_settings: list[dict[str, str]] = [{"name": str(s["name"]), "value": str(s["value"])} for s in data.get("settings", [])]
+        settings: dict[str, Any] = {s["name"]: s["value"] for s in raw_settings}
+
+        def _bool(key: str) -> bool | None:
+            v = settings.get(key)
+            return None if v is None else str(v).lower() == "true"
+
+        def _enum(enum_cls: type[_T], key: str) -> _T | None:
+            v = settings.get(key)
+            if v is None:
+                return None
+            try:
+                return enum_cls(v)
+            except ValueError:
+                return None
+
+        for _key, _val in {
+            "Power": _bool("Power"),
+            "InStandbyMode": _bool("InStandbyMode"),
+            "HasZone2": _bool("HasZone2"),
+            "ForcedHotWaterMode": _bool("ForcedHotWaterMode"),
+            "IsInError": _bool("IsInError"),
+            "OperationMode": _enum(ATWOperationMode, "OperationMode"),
+            "OperationModeZone1": _enum(ATWZoneMode, "OperationModeZone1"),
+            "OperationModeZone2": _enum(ATWZoneMode, "OperationModeZone2"),
+        }.items():
+            if _key in settings:
+                settings[_key] = _val
+
         return {
             "id": str(data["id"]),
             "name": data.get("givenDisplayName", ""),
@@ -159,6 +181,8 @@ class ATWUnit(BaseModel):
             "tank_water_temperature": settings.get("TankWaterTemperature"),
             "forced_hot_water_mode": settings.get("ForcedHotWaterMode"),
             "is_in_error": settings.get("IsInError"),
+            "raw_settings": raw_settings,
+            "settings": settings,
             "rssi": data.get("rssi"),
             "capabilities": ATWCapabilities.model_validate(data.get("capabilities")) if data.get("capabilities") else None,
         }

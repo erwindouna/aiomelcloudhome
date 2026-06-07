@@ -1,9 +1,11 @@
 """Air-to-Air (ATA) models for Melcloud Home."""
 
 from enum import StrEnum
-from typing import Any
+from typing import Any, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+_T = TypeVar("_T", bound=StrEnum)
 
 
 class ATAOperationMode(StrEnum):
@@ -19,6 +21,7 @@ class ATAOperationMode(StrEnum):
 class ATAFanSpeed(StrEnum):
     """Fan speed for Air-to-Air units."""
 
+    OFF = "Off"
     AUTO = "Auto"
     ONE = "One"
     TWO = "Two"
@@ -110,10 +113,13 @@ class ATAUnit(BaseModel):
     set_temperature: float | None = None
     room_temperature: float | None = None
     set_fan_speed: ATAFanSpeed | None = None
+    actual_fan_speed: ATAFanSpeed | None = None
     vane_vertical_direction: ATAVaneVertical | None = None
     vane_horizontal_direction: ATAVaneHorizontal | None = None
     in_standby_mode: bool | None = None
     is_in_error: bool | None = None
+    raw_settings: list[dict[str, str]] = Field(default_factory=list, repr=False)
+    settings: dict[str, Any] = Field(default_factory=dict, repr=False)
     rssi: int | None = None
     capabilities: ATACapabilities | None = None
 
@@ -140,7 +146,52 @@ class ATAUnit(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _from_api(cls, data: dict[str, Any]) -> dict[str, Any]:
-        settings: dict[str, str] = {setting["name"]: setting["value"] for setting in data.get("settings", [])}
+        raw_settings: list[dict[str, str]] = [{"name": str(s["name"]), "value": str(s["value"])} for s in data.get("settings", [])]
+        settings: dict[str, Any] = {s["name"]: s["value"] for s in raw_settings}
+
+        def _bool(key: str) -> bool | None:
+            v = settings.get(key)
+            return None if v is None else str(v).lower() == "true"
+
+        def _enum(enum_cls: type[_T], key: str) -> _T | None:
+            v = settings.get(key)
+            if v is None:
+                return None
+            try:
+                return enum_cls(v)
+            except ValueError:
+                return None
+
+        # type known keys in-place so the exported settings dict is typed
+        for _key, _val in {
+            "Power": _bool("Power"),
+            "InStandbyMode": _bool("InStandbyMode"),
+            "IsInError": _bool("IsInError"),
+            "OperationMode": _enum(ATAOperationMode, "OperationMode"),
+            "SetFanSpeed": _enum(ATAFanSpeed, "SetFanSpeed"),
+            "ActualFanSpeed": _enum(ATAFanSpeed, "ActualFanSpeed"),
+            "VaneVerticalDirection": _enum(ATAVaneVertical, "VaneVerticalDirection"),
+            "VaneHorizontalDirection": _enum(ATAVaneHorizontal, "VaneHorizontalDirection"),
+        }.items():
+            if _key in settings:
+                settings[_key] = _val
+
+        capabilities_payload = data.get("capabilities")
+        if isinstance(capabilities_payload, dict):
+            capabilities_payload = dict(capabilities_payload)
+            if "minTempCool" not in capabilities_payload and "minTempCoolDry" in capabilities_payload:
+                capabilities_payload["minTempCool"] = capabilities_payload["minTempCoolDry"]
+            if "maxTempCool" not in capabilities_payload and "maxTempCoolDry" in capabilities_payload:
+                capabilities_payload["maxTempCool"] = capabilities_payload["maxTempCoolDry"]
+            if "hasStandbyMode" not in capabilities_payload and "hasStandby" in capabilities_payload:
+                capabilities_payload["hasStandbyMode"] = capabilities_payload["hasStandby"]
+            if "hasVaneVertical" not in capabilities_payload and (
+                "VaneVerticalDirection" in settings or capabilities_payload.get("hasAirDirection") is True
+            ):
+                capabilities_payload["hasVaneVertical"] = True
+            if "hasVaneHorizontal" not in capabilities_payload and "VaneHorizontalDirection" in settings:
+                capabilities_payload["hasVaneHorizontal"] = True
+
         return {
             "id": str(data["id"]),
             "name": data.get("givenDisplayName", ""),
@@ -149,10 +200,13 @@ class ATAUnit(BaseModel):
             "set_temperature": settings.get("SetTemperature"),
             "room_temperature": settings.get("RoomTemperature"),
             "set_fan_speed": settings.get("SetFanSpeed"),
+            "actual_fan_speed": settings.get("ActualFanSpeed"),
             "vane_vertical_direction": settings.get("VaneVerticalDirection"),
             "vane_horizontal_direction": settings.get("VaneHorizontalDirection"),
             "in_standby_mode": settings.get("InStandbyMode"),
             "is_in_error": settings.get("IsInError"),
+            "raw_settings": raw_settings,
+            "settings": settings,
             "rssi": data.get("rssi"),
-            "capabilities": ATACapabilities.model_validate(data.get("capabilities")) if data.get("capabilities") else None,
+            "capabilities": ATACapabilities.model_validate(capabilities_payload) if capabilities_payload else None,
         }
