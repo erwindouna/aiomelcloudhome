@@ -8,7 +8,7 @@ import time
 from abc import ABC, abstractmethod
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
-from aiohttp import ClientResponseError, ClientSession
+from aiohttp import ClientResponseError, ClientSession, NonHttpUrlRedirectClientError
 
 from .exceptions import MelCloudHomeAuthenticationError
 
@@ -120,6 +120,13 @@ class MelCloudHomeAuth(AbstractAuth):
             async with self.session.get(auth_url, allow_redirects=True) as resp:
                 cognito_url = str(resp.url)
                 cognito_html = await resp.text()
+        except NonHttpUrlRedirectClientError as err:
+            callback_params = parse_qs(urlparse(str(err.args[0])).query)
+            auth_code = (callback_params.get("code") or [""])[0]
+            if not auth_code:
+                raise MelCloudHomeAuthenticationError("No authorization code in direct redirect") from err
+            await self._exchange_code(auth_code, verifier)
+            return
         except ClientResponseError as err:
             raise MelCloudHomeAuthenticationError("Authorization redirect failed") from err
 
