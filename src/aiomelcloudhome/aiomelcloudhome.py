@@ -178,6 +178,36 @@ class MELCloudHome:
         )
         await self._request(f"/monitor/atwunit/{unit_id}", method=METH_PUT, json=control.to_api_payload())
 
+    async def set_frost_protection(
+        self,
+        unit_id: str,
+        *,
+        enabled: bool,
+        min_temp: float,
+        max_temp: float,
+    ) -> None:
+        """Set frost protection settings for an ATA unit."""
+        await self._request(
+            f"/monitor/ataunit/{unit_id}/frostprotection",
+            method=METH_PUT,
+            json={"enabled": enabled, "min": min_temp, "max": max_temp},
+        )
+
+    async def set_overheat_protection(
+        self,
+        unit_id: str,
+        *,
+        enabled: bool,
+        min_temp: float,
+        max_temp: float,
+    ) -> None:
+        """Set overheat protection settings for an ATA unit."""
+        await self._request(
+            f"/monitor/ataunit/{unit_id}/overheatprotection",
+            method=METH_PUT,
+            json={"enabled": enabled, "min": min_temp, "max": max_temp},
+        )
+
     async def get_energy_telemetry(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         unit_id: str,
