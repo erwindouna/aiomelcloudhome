@@ -71,6 +71,42 @@ async def test_control_atw_unit(aresponses: ResponsesMockServer, melcloudhome_cl
     aresponses.assert_plan_strictly_followed()
 
 
+async def test_set_frost_protection(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome) -> None:
+    """Test that set_frost_protection sends a PUT request."""
+    aresponses.add(
+        "mobile.bff.melcloudhome.com",
+        "/monitor/ataunit/ata-unit-uuid-1/frostprotection",
+        "PUT",
+        aresponses.Response(status=200, text="", headers={"Content-Length": "0"}),
+    )
+
+    await melcloudhome_client.set_frost_protection(
+        "ata-unit-uuid-1",
+        enabled=True,
+        min_temp=10.0,
+        max_temp=12.0,
+    )
+    aresponses.assert_plan_strictly_followed()
+
+
+async def test_set_overheat_protection(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome) -> None:
+    """Test that set_overheat_protection sends a PUT request."""
+    aresponses.add(
+        "mobile.bff.melcloudhome.com",
+        "/monitor/ataunit/ata-unit-uuid-1/overheatprotection",
+        "PUT",
+        aresponses.Response(status=200, text="", headers={"Content-Length": "0"}),
+    )
+
+    await melcloudhome_client.set_overheat_protection(
+        "ata-unit-uuid-1",
+        enabled=True,
+        min_temp=35.0,
+        max_temp=37.0,
+    )
+    aresponses.assert_plan_strictly_followed()
+
+
 async def test_get_energy_telemetry(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome, snapshot: SnapshotAssertion) -> None:
     """Test that energy telemetry is fetched and parsed correctly."""
     aresponses.add(

@@ -54,6 +54,24 @@ class ATAVaneHorizontal(StrEnum):
     RIGHT = "Right"
 
 
+class FrostProtection(BaseModel):
+    """Frost protection state and settings for an ATA unit."""
+
+    active: bool = False
+    enabled: bool = False
+    min: float = 0.0
+    max: float = 0.0
+
+
+class OverheatProtection(BaseModel):
+    """Overheat protection state and settings for an ATA unit."""
+
+    active: bool = False
+    enabled: bool = False
+    min: float = 0.0
+    max: float = 0.0
+
+
 class ATAUnitControl(BaseModel):
     """Control parameters for an Air-to-Air unit."""
 
@@ -122,6 +140,8 @@ class ATAUnit(BaseModel):
     settings: dict[str, Any] = Field(default_factory=dict, repr=False)
     rssi: int | None = None
     capabilities: ATACapabilities | None = None
+    frost_protection: FrostProtection | None = None
+    overheat_protection: OverheatProtection | None = None
 
     @field_validator("set_temperature", "room_temperature", mode="before")
     @classmethod
@@ -209,4 +229,6 @@ class ATAUnit(BaseModel):
             "settings": settings,
             "rssi": data.get("rssi"),
             "capabilities": ATACapabilities.model_validate(capabilities_payload) if capabilities_payload else None,
+            "frost_protection": FrostProtection.model_validate(data["frostProtection"]) if data.get("frostProtection") else None,
+            "overheat_protection": OverheatProtection.model_validate(data["overheatProtection"]) if data.get("overheatProtection") else None,
         }
