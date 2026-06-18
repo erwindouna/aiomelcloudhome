@@ -7,7 +7,7 @@ from importlib import metadata
 from typing import Any, Self, cast
 
 from aiohttp import ClientError, ClientResponseError, ClientSession, ClientTimeout
-from aiohttp.hdrs import METH_GET, METH_PUT
+from aiohttp.hdrs import METH_GET, METH_POST, METH_PUT
 from yarl import URL
 
 from aiomelcloudhome.models.telemetry import MeasurementEntry, TelemetryValue
@@ -178,34 +178,46 @@ class MELCloudHome:
         )
         await self._request(f"/monitor/atwunit/{unit_id}", method=METH_PUT, json=control.to_api_payload())
 
-    async def set_frost_protection(
+    async def set_frost_protection(  # pylint: disable=too-many-arguments
         self,
-        unit_id: str,
         *,
         enabled: bool,
         min_temp: float,
         max_temp: float,
+        ata_unit_ids: list[str] | None = None,
+        atw_unit_ids: list[str] | None = None,
     ) -> None:
-        """Set frost protection settings for an ATA unit."""
+        """Set frost protection settings for ATA and/or ATW units."""
+        units: dict[str, list[str]] = {}
+        if ata_unit_ids:
+            units["ATA"] = ata_unit_ids
+        if atw_unit_ids:
+            units["ATW"] = atw_unit_ids
         await self._request(
-            f"/monitor/ataunit/{unit_id}/frostprotection",
-            method=METH_PUT,
-            json={"enabled": enabled, "min": min_temp, "max": max_temp},
+            "/monitor/protection/frost",
+            method=METH_POST,
+            json={"enabled": enabled, "min": min_temp, "max": max_temp, "units": units},
         )
 
-    async def set_overheat_protection(
+    async def set_overheat_protection(  # pylint: disable=too-many-arguments
         self,
-        unit_id: str,
         *,
         enabled: bool,
         min_temp: float,
         max_temp: float,
+        ata_unit_ids: list[str] | None = None,
+        atw_unit_ids: list[str] | None = None,
     ) -> None:
-        """Set overheat protection settings for an ATA unit."""
+        """Set overheat protection settings for ATA and/or ATW units."""
+        units: dict[str, list[str]] = {}
+        if ata_unit_ids:
+            units["ATA"] = ata_unit_ids
+        if atw_unit_ids:
+            units["ATW"] = atw_unit_ids
         await self._request(
-            f"/monitor/ataunit/{unit_id}/overheatprotection",
-            method=METH_PUT,
-            json={"enabled": enabled, "min": min_temp, "max": max_temp},
+            "/monitor/protection/overheat",
+            method=METH_POST,
+            json={"enabled": enabled, "min": min_temp, "max": max_temp, "units": units},
         )
 
     async def get_energy_telemetry(  # pylint: disable=too-many-arguments,too-many-positional-arguments
