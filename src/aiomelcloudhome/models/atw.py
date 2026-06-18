@@ -5,6 +5,8 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .ata import FrostProtection, OverheatProtection
+
 _T = TypeVar("_T", bound=StrEnum)
 
 
@@ -103,6 +105,8 @@ class ATWUnit(BaseModel):
     settings: dict[str, Any] = Field(default_factory=dict, repr=False)
     rssi: int | None = None
     capabilities: ATWCapabilities | None = None
+    frost_protection: FrostProtection | None = None
+    overheat_protection: OverheatProtection | None = None
 
     @field_validator(
         "set_temperature_zone1",
@@ -185,4 +189,6 @@ class ATWUnit(BaseModel):
             "settings": settings,
             "rssi": data.get("rssi"),
             "capabilities": ATWCapabilities.model_validate(data.get("capabilities")) if data.get("capabilities") else None,
+            "frost_protection": FrostProtection.model_validate(data["frostProtection"]) if data.get("frostProtection") else None,
+            "overheat_protection": OverheatProtection.model_validate(data["overheatProtection"]) if data.get("overheatProtection") else None,
         }
