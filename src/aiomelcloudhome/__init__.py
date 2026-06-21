@@ -23,6 +23,7 @@ from .models import (
     ATWUnitControl,
     ATWZoneMode,
     Building,
+    HolidayMode,
     UserContext,
 )
 
@@ -41,6 +42,7 @@ __all__ = [
     "ATWZoneMode",
     "AbstractAuth",
     "Building",
+    "HolidayMode",
     "MELCloudHome",
     "MelCloudHomeAuth",
     "MelCloudHomeAuthenticationError",

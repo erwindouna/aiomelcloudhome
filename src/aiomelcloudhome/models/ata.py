@@ -1,5 +1,6 @@
 """Air-to-Air (ATA) models for Melcloud Home."""
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Any, TypeVar
 
@@ -52,6 +53,17 @@ class ATAVaneHorizontal(StrEnum):
     CENTRE = "Centre"
     RIGHT_CENTRE = "RightCentre"
     RIGHT = "Right"
+
+
+class HolidayMode(BaseModel):
+    """Holiday mode state and schedule for a unit."""
+
+    active: bool = False
+    enabled: bool = False
+    start_date: datetime | None = Field(default=None, alias="startDate")
+    end_date: datetime | None = Field(default=None, alias="endDate")
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class FrostProtection(BaseModel):
@@ -142,6 +154,7 @@ class ATAUnit(BaseModel):
     capabilities: ATACapabilities | None = None
     frost_protection: FrostProtection | None = None
     overheat_protection: OverheatProtection | None = None
+    holiday_mode: HolidayMode | None = None
 
     @field_validator("set_temperature", "room_temperature", mode="before")
     @classmethod
@@ -231,4 +244,5 @@ class ATAUnit(BaseModel):
             "capabilities": ATACapabilities.model_validate(capabilities_payload) if capabilities_payload else None,
             "frost_protection": FrostProtection.model_validate(data["frostProtection"]) if data.get("frostProtection") else None,
             "overheat_protection": OverheatProtection.model_validate(data["overheatProtection"]) if data.get("overheatProtection") else None,
+            "holiday_mode": HolidayMode.model_validate(data["holidayMode"]) if data.get("holidayMode") else None,
         }
