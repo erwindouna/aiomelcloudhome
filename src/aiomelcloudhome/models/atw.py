@@ -5,7 +5,7 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .ata import FrostProtection, OverheatProtection
+from .ata import FrostProtection, HolidayMode, OverheatProtection
 
 _T = TypeVar("_T", bound=StrEnum)
 
@@ -107,6 +107,7 @@ class ATWUnit(BaseModel):
     capabilities: ATWCapabilities | None = None
     frost_protection: FrostProtection | None = None
     overheat_protection: OverheatProtection | None = None
+    holiday_mode: HolidayMode | None = None
 
     @field_validator(
         "set_temperature_zone1",
@@ -191,4 +192,5 @@ class ATWUnit(BaseModel):
             "capabilities": ATWCapabilities.model_validate(data.get("capabilities")) if data.get("capabilities") else None,
             "frost_protection": FrostProtection.model_validate(data["frostProtection"]) if data.get("frostProtection") else None,
             "overheat_protection": OverheatProtection.model_validate(data["overheatProtection"]) if data.get("overheatProtection") else None,
+            "holiday_mode": HolidayMode.model_validate(data["holidayMode"]) if data.get("holidayMode") else None,
         }

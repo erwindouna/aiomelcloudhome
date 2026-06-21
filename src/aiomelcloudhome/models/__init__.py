@@ -9,6 +9,7 @@ from .ata import (
     ATAVaneHorizontal,
     ATAVaneVertical,
     FrostProtection,
+    HolidayMode,
     OverheatProtection,
 )
 from .atw import ATWCapabilities, ATWOperationMode, ATWUnit, ATWUnitControl, ATWZoneMode
@@ -29,6 +30,7 @@ __all__ = [
     "ATWZoneMode",
     "Building",
     "FrostProtection",
+    "HolidayMode",
     "OverheatProtection",
     "UserContext",
 ]

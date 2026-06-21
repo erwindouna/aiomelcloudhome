@@ -60,7 +60,12 @@
             "min": 35,
             "max": 37
           },
-          "holidayMode": null,
+          "holidayMode": {
+            "enabled": true,
+            "startDate": "2026-06-21T21:47:28.229",
+            "endDate": "2026-06-25T17:00:00",
+            "active": false
+          },
           "connectedInterfaceType": "melCloudWiFi",
           "systemId": "system-uuid-1",
           "id": "ata-unit-uuid-1",
@@ -181,6 +186,7 @@
             "hasEnergyConsumedMeter": true
           },
           "rssi": -52,
+          "holidayMode": null,
           "frostProtection": {
             "active": false,
             "enabled": true,
