@@ -2,6 +2,7 @@
 
 import logging
 import socket
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from importlib import metadata
 from typing import Any, Self, cast
@@ -22,6 +23,8 @@ from .exceptions import (
 from .models.ata import ATAFanSpeed, ATAOperationMode, ATAUnitControl, ATAVaneHorizontal, ATAVaneVertical
 from .models.atw import ATWUnitControl, ATWZoneMode
 from .models.context import UserContext
+from .models.realtime import UnitStateDelta
+from .websocket import MELCloudHomeWebSocket
 
 try:
     VERSION = metadata.version(__package__)
@@ -119,6 +122,18 @@ class MELCloudHome:
     async def get_context(self) -> UserContext:
         """Fetch the full user context (all buildings and devices)."""
         return UserContext.model_validate(await self._request("/context"))
+
+    def stream_updates(self) -> AsyncIterator[UnitStateDelta]:
+        """Yield live unit-state deltas over the WebSocket, as an alternative to polling."""
+        return self.websocket().stream()
+
+    def websocket(self) -> MELCloudHomeWebSocket:
+        """Return a live-update WebSocket you can start (``stream()``) and ``close()``.
+
+        Hold the returned object, iterate ``stream()`` in a background task, and call
+        ``close()`` to stop it gracefully; it also works as an async context manager.
+        """
+        return MELCloudHomeWebSocket(self._auth, self._session)
 
     async def control_ata_unit(  # pylint: disable=too-many-arguments
         self,

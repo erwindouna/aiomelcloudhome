@@ -1,6 +1,6 @@
 [project]
 name = "aiomelcloudhome"
-version = "0.1.9"
+version = "0.2.0"
 description = "Asynchronous Python client for the Melcloud Home API"
 authors = [{ name = "Erwin Douna", email = "e.douna@gmail.com" }]
 requires-python = ">=3.12,<4"
@@ -175,5 +175,5 @@ max-complexity = 25
 
 [tool.ruff.lint.per-file-ignores]
 "src/aiomelcloudhome/aiomelcloudhome.py" = ["ASYNC109"]
-"tests/**/*.py" = ["S101", "S105", "S106", "S108", "DTZ001", "DTZ006", "PLC0415", "ARG001", "ARG002", "TC001", "TC002", "TC003", "SIM117", "SLF001"]
+"tests/**/*.py" = ["S101", "S105", "S106", "S107", "S108", "DTZ001", "DTZ006", "PLC0415", "ARG001", "ARG002", "TC001", "TC002", "TC003", "SIM117", "SLF001"]
 "examples/**/*.py" = ["T201", "S106", "INP001"]

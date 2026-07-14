@@ -123,6 +123,35 @@ energy = await client.get_energy_telemetry(
 outdoor = await client.get_outdoor_temperature("ata-unit-id")
 ~~~
 
+### Live updates over WebSocket
+
+Instead of polling `get_context()`, you can opt in to a live update stream. `stream_updates()`
+connects to the MELCloud Home realtime WebSocket, reuses the client's existing authentication,
+reconnects transparently, and yields a typed `UnitStateDelta` whenever a unit changes. Control,
+telemetry and the initial state snapshot still use the REST API.
+
+~~~python
+async for delta in client.stream_updates():
+    print(delta.unit_id, delta.unit_type, delta.changes)
+    # e.g. changes == {"SetTemperature": 21.0} or {"OperationMode": ATAOperationMode.COOL}
+~~~
+
+The stream raises `MelCloudHomeWebSocketError` if the realtime channel cannot be established, so
+you can fall back to polling.
+
+For a long-lived listener that you need to start and stop (for example a Home Assistant
+coordinator), use `client.websocket()` to hold a handle, run `stream()` in a background task, and
+`close()` it on teardown:
+
+~~~python
+ws = client.websocket()
+task = asyncio.create_task(_listen(ws))  # _listen iterates `async for delta in ws.stream()`
+
+# on shutdown (e.g. async_unload_entry):
+await ws.close()   # stops gracefully; stream() ends on its own
+await task
+~~~
+
 More examples can be found in the examples directory.
 
 ## Documentation

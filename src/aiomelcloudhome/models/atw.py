@@ -5,9 +5,21 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .ata import FrostProtection, HolidayMode, OverheatProtection
+from .ata import FrostProtection, HolidayMode, OverheatProtection, _coerce_bool_value, _coerce_float_value
 
 _T = TypeVar("_T", bound=StrEnum)
+
+_ATW_BOOL_SETTINGS = frozenset({"Power", "InStandbyMode", "HasZone2", "ForcedHotWaterMode", "IsInError"})
+_ATW_FLOAT_SETTINGS = frozenset(
+    {
+        "SetTemperatureZone1",
+        "RoomTemperatureZone1",
+        "SetTemperatureZone2",
+        "RoomTemperatureZone2",
+        "SetTankWaterTemperature",
+        "TankWaterTemperature",
+    },
+)
 
 
 class ATWOperationMode(StrEnum):
@@ -27,6 +39,33 @@ class ATWZoneMode(StrEnum):
     HEAT_CURVE = "HeatCurve"
     COOL_ROOM_TEMPERATURE = "CoolRoomTemperature"
     COOL_FLOW_TEMPERATURE = "CoolFlowTemperature"
+
+
+_ATW_ENUM_SETTINGS: dict[str, type[StrEnum]] = {
+    "OperationMode": ATWOperationMode,
+    "OperationModeZone1": ATWZoneMode,
+    "OperationModeZone2": ATWZoneMode,
+}
+
+
+def decode_atw_setting(name: str, value: Any) -> Any:
+    """Decode a single ATW setting value from a WebSocket ``unitStateChanged`` frame.
+
+    Handles the typed (bool/number) and string-name shapes. ATW enum integer codes have
+    not been observed on the socket, so an unmappable value is returned unchanged rather
+    than dropped.
+    """
+    if name in _ATW_BOOL_SETTINGS:
+        return _coerce_bool_value(value)
+    if name in _ATW_FLOAT_SETTINGS:
+        return _coerce_float_value(value)
+    enum_cls = _ATW_ENUM_SETTINGS.get(name)
+    if enum_cls is not None and value is not None and not isinstance(value, bool):
+        try:
+            return enum_cls(str(value).strip())
+        except ValueError:
+            return value
+    return value
 
 
 class ATWUnitControl(BaseModel):

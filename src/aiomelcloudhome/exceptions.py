@@ -19,3 +19,11 @@ class MelCloudHomeAuthenticationError(MelCloudHomeError):
 
 class MelCloudHomeNotFoundError(MelCloudHomeError):
     """Exception raised when a resource is not found."""
+
+
+class MelCloudHomeWebSocketError(MelCloudHomeError):
+    """Exception raised for unrecoverable WebSocket errors.
+
+    Raised when the realtime stream cannot be established or sustained (for example the
+    token endpoint returns a non-200 status). Callers should fall back to REST polling.
+    """
