@@ -1,11 +1,11 @@
 """Air-to-Water (ATW) models for Melcloud Home."""
 
 from enum import StrEnum
-from typing import Any, TypeVar
+from typing import Any, Self, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .ata import FrostProtection, HolidayMode, OverheatProtection, _coerce_bool_value, _coerce_float_value
+from .ata import FrostProtection, HolidayMode, OverheatProtection, _apply_unit_changes, _coerce_bool_value, _coerce_float_value
 
 _T = TypeVar("_T", bound=StrEnum)
 
@@ -233,3 +233,13 @@ class ATWUnit(BaseModel):
             "overheat_protection": OverheatProtection.model_validate(data["overheatProtection"]) if data.get("overheatProtection") else None,
             "holiday_mode": HolidayMode.model_validate(data["holidayMode"]) if data.get("holidayMode") else None,
         }
+
+    def apply_delta(self, changes: dict[str, Any]) -> Self:
+        """Return a copy of this unit with decoded realtime setting changes applied.
+
+        ``changes`` is the decoded mapping carried by a ``UnitStateDelta``.
+        ``None`` values (undecodable codes) are skipped so they never wipe known
+        state; unknown setting names are only merged into ``settings``. Returns
+        the unit itself when nothing applies.
+        """
+        return _apply_unit_changes(self, self.settings, changes)

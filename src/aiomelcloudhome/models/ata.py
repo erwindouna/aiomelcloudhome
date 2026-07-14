@@ -1,12 +1,16 @@
 """Air-to-Air (ATA) models for Melcloud Home."""
 
+import re
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, TypeVar
+from typing import Any, Self, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 _T = TypeVar("_T", bound=StrEnum)
+_UnitT = TypeVar("_UnitT", bound=BaseModel)
+
+_CAMEL_TO_SNAKE = re.compile(r"(?<!^)(?=[A-Z])")
 
 
 class ATAOperationMode(StrEnum):
@@ -148,6 +152,17 @@ def decode_ata_setting(name: str, value: Any) -> Any:
         enum_cls, code_map = enum_spec
         return _decode_enum_value(enum_cls, code_map, value)
     return value
+
+
+def _apply_unit_changes(unit: _UnitT, settings: dict[str, Any], changes: dict[str, Any]) -> _UnitT:  # noqa: UP047
+    """Return a copy of ``unit`` with decoded realtime changes applied, or ``unit`` itself if none apply."""
+    applied = {name: value for name, value in changes.items() if value is not None}
+    if not applied:
+        return unit
+    updates: dict[str, Any] = {
+        field: value for name, value in applied.items() if (field := _CAMEL_TO_SNAKE.sub("_", name).lower()) in type(unit).model_fields
+    }
+    return unit.model_copy(update={**updates, "settings": {**settings, **applied}})
 
 
 class HolidayMode(BaseModel):
@@ -329,3 +344,13 @@ class ATAUnit(BaseModel):
             "overheat_protection": OverheatProtection.model_validate(data["overheatProtection"]) if data.get("overheatProtection") else None,
             "holiday_mode": HolidayMode.model_validate(data["holidayMode"]) if data.get("holidayMode") else None,
         }
+
+    def apply_delta(self, changes: dict[str, Any]) -> Self:
+        """Return a copy of this unit with decoded realtime setting changes applied.
+
+        ``changes`` is the decoded mapping carried by a ``UnitStateDelta``.
+        ``None`` values (undecodable codes) are skipped so they never wipe known
+        state; unknown setting names are only merged into ``settings``. Returns
+        the unit itself when nothing applies.
+        """
+        return _apply_unit_changes(self, self.settings, changes)

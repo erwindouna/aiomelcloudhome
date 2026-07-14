@@ -1,13 +1,15 @@
 """Realtime (WebSocket) update models for Melcloud Home."""
 
-from typing import Any
+from typing import Any, TypeVar
 
 from pydantic import BaseModel, Field
 
-from .ata import decode_ata_setting
-from .atw import decode_atw_setting
+from .ata import ATAUnit, decode_ata_setting
+from .atw import ATWUnit, decode_atw_setting
 
 MESSAGE_TYPE_UNIT_STATE_CHANGED = "unitStateChanged"
+
+_UnitT = TypeVar("_UnitT", ATAUnit, ATWUnit)
 
 
 class UnitStateDelta(BaseModel):
@@ -42,6 +44,15 @@ class UnitStateDelta(BaseModel):
                 changes[name] = value
 
         return cls(unit_id=str(unit_id), unit_type=unit_type, changes=changes, raw_settings=raw_settings)
+
+    def apply_to(self, unit: _UnitT) -> _UnitT:
+        """Return a copy of ``unit`` with this delta's changes applied.
+
+        ``None`` change values (undecodable codes) are skipped so they never wipe
+        known state; unknown setting names are only merged into ``settings``.
+        Returns the unit itself when nothing applies.
+        """
+        return unit.apply_delta(self.changes)
 
 
 def parse_frame(payload: Any) -> list[UnitStateDelta]:
