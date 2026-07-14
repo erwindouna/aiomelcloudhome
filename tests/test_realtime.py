@@ -9,7 +9,8 @@ from typing import Any
 import pytest
 from syrupy.assertion import SnapshotAssertion
 
-from aiomelcloudhome.models.ata import ATAFanSpeed, ATAOperationMode, ATAVaneHorizontal, ATAVaneVertical
+from aiomelcloudhome.models.ata import ATAFanSpeed, ATAOperationMode, ATAUnit, ATAVaneHorizontal, ATAVaneVertical
+from aiomelcloudhome.models.atw import ATWOperationMode, ATWUnit
 from aiomelcloudhome.models.realtime import UnitStateDelta, parse_frame
 
 
@@ -161,3 +162,113 @@ def test_parse_frame_non_list() -> None:
     """A non-list payload parses to an empty list."""
     assert parse_frame({"not": "a list"}) == []
     assert parse_frame("nope") == []
+
+
+def _ata_unit() -> ATAUnit:
+    """Return an ATA unit built from a REST-shaped payload."""
+    return ATAUnit.model_validate(
+        {
+            "id": "unit-1",
+            "givenDisplayName": "Living Room",
+            "settings": [
+                {"name": "Power", "value": "True"},
+                {"name": "OperationMode", "value": "Heat"},
+                {"name": "SetTemperature", "value": "21"},
+                {"name": "RoomTemperature", "value": "20"},
+            ],
+        },
+    )
+
+
+def _atw_unit() -> ATWUnit:
+    """Return an ATW unit built from a REST-shaped payload."""
+    return ATWUnit.model_validate(
+        {
+            "id": "atw-1",
+            "givenDisplayName": "Heat Pump",
+            "settings": [
+                {"name": "Power", "value": "True"},
+                {"name": "OperationMode", "value": "HeatZones"},
+                {"name": "SetTankWaterTemperature", "value": "50"},
+                {"name": "ForcedHotWaterMode", "value": "False"},
+            ],
+        },
+    )
+
+
+def test_ata_apply_delta_updates_fields_and_settings() -> None:
+    """Applying an ATA delta updates the mapped fields and the settings dict on a new instance."""
+    unit = _ata_unit()
+    (delta,) = parse_frame(
+        [
+            {
+                "messageType": "unitStateChanged",
+                "Data": {
+                    "id": "unit-1",
+                    "unitType": "ata",
+                    "settings": [
+                        {"name": "Power", "value": False},
+                        {"name": "OperationMode", "value": 3},
+                        {"name": "SetTemperature", "value": 17},
+                    ],
+                },
+            },
+        ],
+    )
+    updated = delta.apply_to(unit)
+    assert updated is not unit
+    assert updated.power is False
+    assert updated.operation_mode is ATAOperationMode.COOL
+    assert updated.set_temperature == 17.0
+    assert updated.room_temperature == 20.0
+    assert updated.settings["Power"] is False
+    assert updated.settings["OperationMode"] is ATAOperationMode.COOL
+    # the original unit is untouched
+    assert unit.power is True
+    assert unit.operation_mode is ATAOperationMode.HEAT
+    assert unit.settings["Power"] is True
+
+
+def test_atw_apply_delta_updates_fields_and_settings() -> None:
+    """Applying an ATW delta updates the mapped fields and the settings dict on a new instance."""
+    unit = _atw_unit()
+    delta = UnitStateDelta(
+        unit_id="atw-1",
+        unit_type="atw",
+        changes={"SetTankWaterTemperature": 45.0, "ForcedHotWaterMode": True, "OperationMode": ATWOperationMode.HOT_WATER},
+    )
+    updated = unit.apply_delta(delta.changes)
+    assert updated is not unit
+    assert updated.set_tank_water_temperature == 45.0
+    assert updated.forced_hot_water_mode is True
+    assert updated.operation_mode is ATWOperationMode.HOT_WATER
+    assert updated.settings["SetTankWaterTemperature"] == 45.0
+    assert unit.set_tank_water_temperature == 50.0
+    assert unit.forced_hot_water_mode is False
+
+
+def test_apply_delta_skips_none_values() -> None:
+    """None change values (undecodable codes) never wipe known state."""
+    unit = _ata_unit()
+    (delta,) = parse_frame(_ata_frame("OperationMode", 99))
+    assert delta.changes == {"OperationMode": None}
+    assert delta.apply_to(unit) is unit
+    assert unit.operation_mode is ATAOperationMode.HEAT
+
+
+def test_apply_delta_unknown_setting_only_merged_into_settings() -> None:
+    """Unknown setting names do not map to fields but are kept in settings."""
+    unit = _ata_unit()
+    delta = UnitStateDelta(unit_id="unit-1", unit_type="ata", changes={"SomethingNew": "raw"})
+    updated = delta.apply_to(unit)
+    assert updated is not unit
+    assert updated.settings["SomethingNew"] == "raw"
+    assert updated.power is True
+    assert "SomethingNew" not in unit.settings
+
+
+def test_apply_delta_empty_changes_returns_same_instance() -> None:
+    """A delta without changes returns the unit itself."""
+    unit = _atw_unit()
+    delta = UnitStateDelta(unit_id="atw-1", unit_type="atw", changes={})
+    assert delta.apply_to(unit) is unit
