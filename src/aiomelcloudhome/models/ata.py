@@ -55,6 +55,101 @@ class ATAVaneHorizontal(StrEnum):
     RIGHT = "Right"
 
 
+# WebSocketunitStateChanged frames encode enum settings as integer codes, whereas
+# the REST context endpoint returns their string names.
+# So yeah, we need to map it...
+_ATA_OPERATION_MODE_BY_CODE: dict[int, ATAOperationMode] = {
+    1: ATAOperationMode.HEAT,
+    2: ATAOperationMode.DRY,
+    3: ATAOperationMode.COOL,
+    4: ATAOperationMode.FAN,
+    5: ATAOperationMode.AUTOMATIC,
+}
+_ATA_FAN_SPEED_BY_CODE: dict[int, ATAFanSpeed] = {
+    0: ATAFanSpeed.AUTO,
+    1: ATAFanSpeed.ONE,
+    2: ATAFanSpeed.TWO,
+    3: ATAFanSpeed.THREE,
+    4: ATAFanSpeed.FOUR,
+    5: ATAFanSpeed.FIVE,
+}
+_ATA_VANE_VERTICAL_BY_CODE: dict[int, ATAVaneVertical] = {
+    0: ATAVaneVertical.AUTO,
+    1: ATAVaneVertical.ONE,
+    2: ATAVaneVertical.TWO,
+    3: ATAVaneVertical.THREE,
+    4: ATAVaneVertical.FOUR,
+    5: ATAVaneVertical.FIVE,
+    6: ATAVaneVertical.SWING,
+}
+_ATA_VANE_HORIZONTAL_BY_CODE: dict[int, ATAVaneHorizontal] = {
+    0: ATAVaneHorizontal.AUTO,
+    1: ATAVaneHorizontal.LEFT,
+    2: ATAVaneHorizontal.LEFT_CENTRE,
+    3: ATAVaneHorizontal.CENTRE,
+    4: ATAVaneHorizontal.RIGHT_CENTRE,
+    5: ATAVaneHorizontal.RIGHT,
+    7: ATAVaneHorizontal.SWING,
+}
+
+_ATA_BOOL_SETTINGS = frozenset({"Power", "InStandbyMode", "IsInError"})
+_ATA_FLOAT_SETTINGS = frozenset({"SetTemperature", "RoomTemperature"})
+_ATA_ENUM_SETTINGS: dict[str, tuple[type[StrEnum], dict[int, Any]]] = {
+    "OperationMode": (ATAOperationMode, _ATA_OPERATION_MODE_BY_CODE),
+    "SetFanSpeed": (ATAFanSpeed, _ATA_FAN_SPEED_BY_CODE),
+    "ActualFanSpeed": (ATAFanSpeed, _ATA_FAN_SPEED_BY_CODE),
+    "VaneVerticalDirection": (ATAVaneVertical, _ATA_VANE_VERTICAL_BY_CODE),
+    "VaneHorizontalDirection": (ATAVaneHorizontal, _ATA_VANE_HORIZONTAL_BY_CODE),
+}
+
+
+def _coerce_bool_value(value: Any) -> bool | None:
+    """Coerce a REST string or WebSocket bool into a bool."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() == "true"
+
+
+def _coerce_float_value(value: Any) -> float | None:
+    """Coerce a REST string or WebSocket number into a float."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def _decode_enum_value(enum_cls: type[_T], code_map: dict[int, _T], value: Any) -> _T | None:  # noqa: UP047  # PEP 695 syntax needs Python 3.12; library targets 3.11
+    """Decode a setting value that may arrive as an integer code (WebSocket) or a name (REST)."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return code_map.get(value)
+    text = str(value).strip()
+    if text.lstrip("-").isdigit():
+        return code_map.get(int(text))
+    try:
+        return enum_cls(text)
+    except ValueError:
+        return None
+
+
+def decode_ata_setting(name: str, value: Any) -> Any:
+    """Decode a single ATA setting value into its typed form."""
+    if name in _ATA_BOOL_SETTINGS:
+        return _coerce_bool_value(value)
+    if name in _ATA_FLOAT_SETTINGS:
+        return _coerce_float_value(value)
+    enum_spec = _ATA_ENUM_SETTINGS.get(name)
+    if enum_spec is not None:
+        enum_cls, code_map = enum_spec
+        return _decode_enum_value(enum_cls, code_map, value)
+    return value
+
+
 class HolidayMode(BaseModel):
     """Holiday mode state and schedule for a unit."""
 
@@ -182,32 +277,20 @@ class ATAUnit(BaseModel):
         raw_settings: list[dict[str, str]] = [{"name": str(s["name"]), "value": str(s["value"])} for s in data.get("settings", [])]
         settings: dict[str, Any] = {s["name"]: s["value"] for s in raw_settings}
 
-        def _bool(key: str) -> bool | None:
-            v = settings.get(key)
-            return None if v is None else str(v).lower() == "true"
-
-        def _enum(enum_cls: type[_T], key: str) -> _T | None:
-            v = settings.get(key)
-            if v is None:
-                return None
-            try:
-                return enum_cls(v)
-            except ValueError:
-                return None
-
         # type known keys in-place so the exported settings dict is typed
-        for _key, _val in {
-            "Power": _bool("Power"),
-            "InStandbyMode": _bool("InStandbyMode"),
-            "IsInError": _bool("IsInError"),
-            "OperationMode": _enum(ATAOperationMode, "OperationMode"),
-            "SetFanSpeed": _enum(ATAFanSpeed, "SetFanSpeed"),
-            "ActualFanSpeed": _enum(ATAFanSpeed, "ActualFanSpeed"),
-            "VaneVerticalDirection": _enum(ATAVaneVertical, "VaneVerticalDirection"),
-            "VaneHorizontalDirection": _enum(ATAVaneHorizontal, "VaneHorizontalDirection"),
-        }.items():
+        _typed_keys = (
+            "Power",
+            "InStandbyMode",
+            "IsInError",
+            "OperationMode",
+            "SetFanSpeed",
+            "ActualFanSpeed",
+            "VaneVerticalDirection",
+            "VaneHorizontalDirection",
+        )
+        for _key in _typed_keys:
             if _key in settings:
-                settings[_key] = _val
+                settings[_key] = decode_ata_setting(_key, settings[_key])
 
         capabilities_payload = data.get("capabilities")
         if isinstance(capabilities_payload, dict):

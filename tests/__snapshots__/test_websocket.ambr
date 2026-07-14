@@ -1,0 +1,6 @@
+# serializer version: 1
+# name: test_stream_yields_delta
+  list([
+    UnitStateDelta(unit_id='u1', unit_type='ata', changes={'SetTemperature': 17.0}),
+  ])
+# ---

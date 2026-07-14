@@ -1,0 +1,16 @@
+# serializer version: 1
+# name: test_atw_delta_decodes_types
+  UnitStateDelta(unit_id='atw-1', unit_type='atw', changes={'Power': True, 'SetTankWaterTemperature': 45.0, 'OperationMode': <ATWOperationMode.HOT_WATER: 'HotWater'>})
+# ---
+# name: test_multi_message_frame
+  list([
+    UnitStateDelta(unit_id='ata-1', unit_type='ata', changes={'OperationMode': <ATAOperationMode.COOL: 'Cool'>}),
+    UnitStateDelta(unit_id='atw-1', unit_type='atw', changes={'Power': False}),
+  ])
+# ---
+# name: test_multi_setting_frame_batched
+  UnitStateDelta(unit_id='unit-1', unit_type='ata', changes={'Power': True, 'OperationMode': <ATAOperationMode.COOL: 'Cool'>, 'SetFanSpeed': <ATAFanSpeed.FOUR: 'Four'>, 'VaneVerticalDirection': <ATAVaneVertical.SWING: 'Swing'>})
+# ---
+# name: test_set_temperature_number
+  UnitStateDelta(unit_id='unit-1', unit_type='ata', changes={'SetTemperature': 17.0})
+# ---

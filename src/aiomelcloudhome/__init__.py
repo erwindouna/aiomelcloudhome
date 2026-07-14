@@ -8,6 +8,7 @@ from .exceptions import (
     MelCloudHomeError,
     MelCloudHomeNotFoundError,
     MelCloudHomeTimeoutError,
+    MelCloudHomeWebSocketError,
 )
 from .models import (
     ATACapabilities,
@@ -26,6 +27,8 @@ from .models import (
     HolidayMode,
     UserContext,
 )
+from .models.realtime import UnitStateDelta
+from .websocket import MELCloudHomeWebSocket
 
 __all__ = [
     "ATACapabilities",
@@ -44,12 +47,15 @@ __all__ = [
     "Building",
     "HolidayMode",
     "MELCloudHome",
+    "MELCloudHomeWebSocket",
     "MelCloudHomeAuth",
     "MelCloudHomeAuthenticationError",
     "MelCloudHomeConnectionError",
     "MelCloudHomeError",
     "MelCloudHomeNotFoundError",
     "MelCloudHomeTimeoutError",
+    "MelCloudHomeWebSocketError",
     "StaticTokenAuth",
+    "UnitStateDelta",
     "UserContext",
 ]
