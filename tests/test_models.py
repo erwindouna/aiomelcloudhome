@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 from syrupy.assertion import SnapshotAssertion
 
-from aiomelcloudhome.models.ata import ATAUnit
+from aiomelcloudhome.models.ata import ATAFanSpeed, ATAUnit, ATAUnitControl
 from aiomelcloudhome.models.atw import ATWUnit
 from aiomelcloudhome.models.context import Building, UserContext
 from tests import load_fixture
@@ -91,6 +91,23 @@ def test_ata_unit_missing_optional_settings(snapshot: SnapshotAssertion) -> None
     }
     unit = ATAUnit.model_validate(raw)
     assert unit == snapshot
+
+
+def test_ata_control_payload_omits_unset_fields() -> None:
+    """Test that an ATA control payload contains only requested changes."""
+    assert ATAUnitControl(set_fan_speed=ATAFanSpeed.ONE).to_api_payload() == {"setFanSpeed": ATAFanSpeed.ONE}
+
+
+@pytest.mark.parametrize(
+    ("control", "expected"),
+    [
+        (ATAUnitControl(power=False), {"power": False}),
+        (ATAUnitControl(set_temperature=0), {"setTemperature": 0}),
+    ],
+)
+def test_ata_control_payload_preserves_falsy_values(control: ATAUnitControl, expected: dict[str, Any]) -> None:
+    """Test that valid falsy control values are retained."""
+    assert control.to_api_payload() == expected
 
 
 def test_ata_unit_exports_settings(context_data: dict[str, Any], snapshot: SnapshotAssertion) -> None:
