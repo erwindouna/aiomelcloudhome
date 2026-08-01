@@ -5,7 +5,14 @@ from typing import Any
 import pytest
 from syrupy.assertion import SnapshotAssertion
 
-from aiomelcloudhome.models.ata import ATAFanSpeed, ATAUnit, ATAUnitControl
+from aiomelcloudhome.models.ata import (
+    ATAFanSpeed,
+    ATAOperationMode,
+    ATAUnit,
+    ATAUnitControl,
+    ATAVaneHorizontal,
+    ATAVaneVertical,
+)
 from aiomelcloudhome.models.atw import ATWUnit
 from aiomelcloudhome.models.context import Building, UserContext
 from tests import load_fixture
@@ -102,12 +109,48 @@ def test_ata_control_payload_omits_unset_fields() -> None:
     ("control", "expected"),
     [
         (ATAUnitControl(power=False), {"power": False}),
+        (ATAUnitControl(power=True), {"power": True}),
+        (ATAUnitControl(operation_mode=ATAOperationMode.COOL), {"operationMode": ATAOperationMode.COOL}),
         (ATAUnitControl(set_temperature=0), {"setTemperature": 0}),
+        (ATAUnitControl(set_temperature=22.5), {"setTemperature": 22.5}),
+        (ATAUnitControl(set_fan_speed=ATAFanSpeed.FIVE), {"setFanSpeed": ATAFanSpeed.FIVE}),
+        (
+            ATAUnitControl(vane_vertical_direction=ATAVaneVertical.SWING),
+            {"vaneVerticalDirection": ATAVaneVertical.SWING},
+        ),
+        (
+            ATAUnitControl(vane_horizontal_direction=ATAVaneHorizontal.RIGHT_CENTRE),
+            {"vaneHorizontalDirection": ATAVaneHorizontal.RIGHT_CENTRE},
+        ),
+        (ATAUnitControl(in_standby_mode=False), {"inStandbyMode": False}),
+        (ATAUnitControl(in_standby_mode=True), {"inStandbyMode": True}),
     ],
 )
-def test_ata_control_payload_preserves_falsy_values(control: ATAUnitControl, expected: dict[str, Any]) -> None:
-    """Test that valid falsy control values are retained."""
+def test_ata_control_payload_preserves_supplied_values(control: ATAUnitControl, expected: dict[str, Any]) -> None:
+    """Test that every supplied control value is retained."""
     assert control.to_api_payload() == expected
+
+
+def test_ata_control_payload_preserves_multiple_supplied_values() -> None:
+    """Test that multiple supplied controls remain in the same payload."""
+    control = ATAUnitControl(
+        power=False,
+        operation_mode=ATAOperationMode.HEAT,
+        set_temperature=0,
+        set_fan_speed=ATAFanSpeed.OFF,
+        vane_vertical_direction=ATAVaneVertical.AUTO,
+        vane_horizontal_direction=ATAVaneHorizontal.LEFT,
+        in_standby_mode=False,
+    )
+    assert control.to_api_payload() == {
+        "power": False,
+        "operationMode": ATAOperationMode.HEAT,
+        "setTemperature": 0,
+        "setFanSpeed": ATAFanSpeed.OFF,
+        "vaneVerticalDirection": ATAVaneVertical.AUTO,
+        "vaneHorizontalDirection": ATAVaneHorizontal.LEFT,
+        "inStandbyMode": False,
+    }
 
 
 def test_ata_unit_exports_settings(context_data: dict[str, Any], snapshot: SnapshotAssertion) -> None:
