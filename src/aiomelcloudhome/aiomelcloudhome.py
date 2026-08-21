@@ -9,7 +9,7 @@ from typing import Any, Self, cast
 
 from aiohttp import ClientError, ClientResponseError, ClientSession, ClientTimeout
 from aiohttp.hdrs import METH_GET, METH_POST, METH_PUT
-from tenacity import AsyncRetrying, retry_if_exception, stop_after_attempt, wait_exponential
+from tenacity import AsyncRetrying, retry_if_exception_type, retry_if_not_exception_type, stop_after_attempt, wait_exponential
 from yarl import URL
 
 from aiomelcloudhome.models.telemetry import MeasurementEntry, TelemetryValue
@@ -40,13 +40,6 @@ _LOGGER = logging.getLogger(__name__)
 _RETRY_ATTEMPTS = 3
 _RETRY_WAIT_MIN = 0.5
 _RETRY_WAIT_MAX = 2.0
-
-
-def _is_transient_error(exc: BaseException) -> bool:
-    """Return True for network-level failures worth retrying, not HTTP error responses."""
-    if isinstance(exc, ClientResponseError):
-        return False
-    return isinstance(exc, (TimeoutError, ClientError, socket.gaierror))
 
 
 class MELCloudHome:
@@ -107,37 +100,37 @@ class MELCloudHome:
             "User-Agent": f"aiomelcloudhome/{VERSION}",
         }
 
+        async def _attempt() -> dict[str, Any]:
+            async with self._session.request(
+                method,
+                url,
+                headers=headers,
+                params=params,
+                json=json,
+                timeout=ClientTimeout(total=timeout or self._request_timeout),
+            ) as resp:
+                match resp.status:
+                    case 401:
+                        raise MelCloudHomeAuthenticationError("Authentication failed")
+                    case 404:
+                        raise MelCloudHomeNotFoundError(f"Resource not found: {uri}")
+                resp.raise_for_status()
+                if resp.content_length == 0 or resp.status in (204, 304):
+                    return {}
+                _LOGGER.debug("API response for %s %s: %s", method, uri, await resp.text())
+                return cast("dict[str, Any]", await resp.json(content_type=None))
+
         try:
-            async for attempt in AsyncRetrying(
+            return await AsyncRetrying(
                 stop=stop_after_attempt(_RETRY_ATTEMPTS),
                 wait=wait_exponential(min=_RETRY_WAIT_MIN, max=_RETRY_WAIT_MAX),
-                retry=retry_if_exception(_is_transient_error),
+                retry=retry_if_exception_type((TimeoutError, ClientError, socket.gaierror)) & retry_if_not_exception_type(ClientResponseError),
                 reraise=True,
-            ):
-                with attempt:
-                    async with self._session.request(
-                        method,
-                        url,
-                        headers=headers,
-                        params=params,
-                        json=json,
-                        timeout=ClientTimeout(total=timeout or self._request_timeout),
-                    ) as resp:
-                        match resp.status:
-                            case 401:
-                                raise MelCloudHomeAuthenticationError("Authentication failed")
-                            case 404:
-                                raise MelCloudHomeNotFoundError(f"Resource not found: {uri}")
-                        resp.raise_for_status()
-                        if resp.content_length == 0 or resp.status in (204, 304):
-                            return {}
-                        _LOGGER.debug("API response for %s %s: %s", method, uri, await resp.text())
-                        return cast("dict[str, Any]", await resp.json(content_type=None))
+            )(_attempt)
         except TimeoutError as err:
             raise MelCloudHomeTimeoutError(f"Request timed out: {err}") from err
         except (ClientResponseError, ClientError, socket.gaierror) as err:
             raise MelCloudHomeConnectionError(f"Connection error: {err}") from err
-        raise AssertionError("unreachable")  # pragma: no cover
 
     async def get_context(self) -> UserContext:
         """Fetch the full user context (all buildings and devices)."""
