@@ -10,9 +10,24 @@ import pytest
 from aresponses import ResponsesMockServer
 
 from aiomelcloudhome import MELCloudHome, MelCloudHomeAuthenticationError, MelCloudHomeConnectionError, MelCloudHomeTimeoutError
+from aiomelcloudhome.aiomelcloudhome import _RETRY_ATTEMPTS
 from aiomelcloudhome.auth import AbstractAuth, MelCloudHomeAuth, _generate_pkce_pair
 from aiomelcloudhome.models.ata import ATAUnit
 from aiomelcloudhome.models.atw import ATWUnit, ATWZoneMode
+
+
+def _mock_response_cm(status: int, payload: dict[str, object]) -> MagicMock:
+    """Build a mock async context manager mimicking a successful aiohttp response."""
+    resp = MagicMock()
+    resp.status = status
+    resp.raise_for_status = MagicMock()
+    resp.content_length = 2
+    resp.text = AsyncMock(return_value=json.dumps(payload))
+    resp.json = AsyncMock(return_value=payload)
+    cm = MagicMock()
+    cm.__aenter__ = AsyncMock(return_value=resp)
+    cm.__aexit__ = AsyncMock(return_value=False)
+    return cm
 
 
 async def test_client_creates_own_session() -> None:
@@ -97,10 +112,36 @@ async def test_request_error_wrapping(
     request_side_effect: Exception,
     expected_exception: type[Exception],
 ) -> None:
-    """Test that low-level request failures are mapped to client-level exceptions."""
-    with patch.object(melcloudhome_client._session, "request", side_effect=request_side_effect):
+    """Test that low-level request failures are retried and then mapped to client-level exceptions."""
+    with patch("asyncio.sleep", AsyncMock()), patch.object(melcloudhome_client._session, "request", side_effect=request_side_effect) as mock_request:
         with pytest.raises(expected_exception):
             await melcloudhome_client.get_context()
+        assert mock_request.call_count == _RETRY_ATTEMPTS
+
+
+async def test_request_retries_transient_errors_then_succeeds(melcloudhome_client: MELCloudHome) -> None:
+    """Test that a transient connection error is retried and a subsequent success is returned."""
+    success = _mock_response_cm(200, {"buildings": [], "guestBuildings": []})
+    with (
+        patch("asyncio.sleep", AsyncMock()),
+        patch.object(
+            melcloudhome_client._session,
+            "request",
+            side_effect=[aiohttp.ClientConnectionError("connection refused"), success],
+        ) as mock_request,
+    ):
+        ctx = await melcloudhome_client.get_context()
+        assert ctx.buildings == []
+        assert mock_request.call_count == 2
+
+
+async def test_request_does_not_retry_http_error_responses(melcloudhome_client: MELCloudHome) -> None:
+    """Test that an HTTP error response (as opposed to a connection failure) is not retried."""
+    error = aiohttp.ClientResponseError(request_info=MagicMock(), history=(), status=500)
+    with patch("asyncio.sleep", AsyncMock()), patch.object(melcloudhome_client._session, "request", side_effect=error) as mock_request:
+        with pytest.raises(MelCloudHomeConnectionError):
+            await melcloudhome_client.get_context()
+        assert mock_request.call_count == 1
 
 
 async def test_get_outdoor_temperature_no_matching_dataset(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome) -> None:
