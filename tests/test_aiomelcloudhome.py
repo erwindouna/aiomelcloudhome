@@ -215,3 +215,4 @@ async def test_client_exceptions(
 
     with pytest.raises(expected_exception):
         await melcloudhome_client.get_context()
+    aresponses.assert_plan_strictly_followed()

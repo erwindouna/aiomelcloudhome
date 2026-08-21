@@ -9,6 +9,7 @@ from typing import Any, Self, cast
 
 from aiohttp import ClientError, ClientResponseError, ClientSession, ClientTimeout
 from aiohttp.hdrs import METH_GET, METH_POST, METH_PUT
+from tenacity import AsyncRetrying, retry_if_exception_type, retry_if_not_exception_type, stop_after_attempt, wait_exponential
 from yarl import URL
 
 from aiomelcloudhome.models.telemetry import MeasurementEntry, TelemetryValue
@@ -35,6 +36,10 @@ except metadata.PackageNotFoundError:  # pragma: no cover
 API_BASE = "https://mobile.bff.melcloudhome.com"
 
 _LOGGER = logging.getLogger(__name__)
+
+_RETRY_ATTEMPTS = 3
+_RETRY_WAIT_MIN = 0.5
+_RETRY_WAIT_MAX = 2.0
 
 
 class MELCloudHome:
@@ -86,7 +91,7 @@ class MELCloudHome:
         json: dict[str, Any] | None = None,
         timeout: float | None = None,
     ) -> dict[str, Any]:
-        """Make an authenticated API request with retry logic."""
+        """Make an authenticated API request, retrying transient network failures."""
         token = await self._auth.async_get_access_token()
         url = URL(self._api_base) / uri.lstrip("/")
         headers = {
@@ -95,7 +100,7 @@ class MELCloudHome:
             "User-Agent": f"aiomelcloudhome/{VERSION}",
         }
 
-        try:
+        async def _attempt() -> dict[str, Any]:
             async with self._session.request(
                 method,
                 url,
@@ -114,6 +119,14 @@ class MELCloudHome:
                     return {}
                 _LOGGER.debug("API response for %s %s: %s", method, uri, await resp.text())
                 return cast("dict[str, Any]", await resp.json(content_type=None))
+
+        try:
+            return await AsyncRetrying(
+                stop=stop_after_attempt(_RETRY_ATTEMPTS),
+                wait=wait_exponential(min=_RETRY_WAIT_MIN, max=_RETRY_WAIT_MAX),
+                retry=retry_if_exception_type((TimeoutError, ClientError, socket.gaierror)) & retry_if_not_exception_type(ClientResponseError),
+                reraise=True,
+            )(_attempt)
         except TimeoutError as err:
             raise MelCloudHomeTimeoutError(f"Request timed out: {err}") from err
         except (ClientResponseError, ClientError, socket.gaierror) as err:
