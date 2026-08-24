@@ -147,6 +147,7 @@ asyncio_default_fixture_loop_scope = "function"
 lint.select = ["ALL"]
 lint.ignore = [
     "ANN401",
+    "CPY001", # No copyright header convention in this project
     "D203",
     "D213",
     "D417",
