@@ -132,15 +132,6 @@ async def test_request_retries_transient_errors_then_succeeds(aresponses: Respon
     assert call_count == 2
 
 
-async def test_request_does_not_retry_http_error_responses(melcloudhome_client: MELCloudHome) -> None:
-    """Test that an HTTP error response (as opposed to a connection failure) is not retried."""
-    error = aiohttp.ClientResponseError(request_info=MagicMock(), history=(), status=500)
-    with patch("asyncio.sleep", AsyncMock()), patch.object(melcloudhome_client._session, "request", side_effect=error) as mock_request:
-        with pytest.raises(MelCloudHomeConnectionError):
-            await melcloudhome_client.get_context()
-        assert mock_request.call_count == 1
-
-
 async def test_get_outdoor_temperature_no_matching_dataset(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome) -> None:
     """Test that get_outdoor_temperature returns None when no outdoor dataset is present."""
     import json

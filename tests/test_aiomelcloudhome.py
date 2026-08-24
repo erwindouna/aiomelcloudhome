@@ -2,12 +2,14 @@
 
 import json
 from datetime import datetime
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from aresponses import ResponsesMockServer
 from syrupy.assertion import SnapshotAssertion
 
 from aiomelcloudhome import MELCloudHome, MelCloudHomeAuthenticationError, MelCloudHomeNotFoundError
+from aiomelcloudhome.aiomelcloudhome import _RETRY_ATTEMPTS
 from aiomelcloudhome.exceptions import MelCloudHomeConnectionError
 from aiomelcloudhome.models.ata import ATAOperationMode
 from tests import load_fixture
@@ -195,24 +197,29 @@ async def test_get_actual_telemetry(aresponses: ResponsesMockServer, melcloudhom
 
 
 @pytest.mark.parametrize(
-    ("status_code", "expected_exception"),
+    ("status_code", "expected_exception", "expected_requests"),
     [
-        (401, MelCloudHomeAuthenticationError),
-        (404, MelCloudHomeNotFoundError),
-        (500, MelCloudHomeConnectionError),
+        (401, MelCloudHomeAuthenticationError, 1),
+        (404, MelCloudHomeNotFoundError, 1),
+        (500, MelCloudHomeConnectionError, _RETRY_ATTEMPTS),
     ],
 )
 async def test_client_exceptions(
-    aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome, status_code: int, expected_exception: type
+    aresponses: ResponsesMockServer,
+    melcloudhome_client: MELCloudHome,
+    status_code: int,
+    expected_exception: type,
+    expected_requests: int,
 ) -> None:
-    """Test that client exceptions are raised for different status codes."""
-    aresponses.add(
-        "mobile.bff.melcloudhome.com",
-        "/context",
-        "GET",
-        aresponses.Response(status=status_code, text="Error", headers={"Content-Type": "text/plain"}),
-    )
+    """Test that client exceptions are raised for different status codes, retrying transient (5xx) ones."""
+    for _ in range(expected_requests):
+        aresponses.add(
+            "mobile.bff.melcloudhome.com",
+            "/context",
+            "GET",
+            aresponses.Response(status=status_code, text="Error", headers={"Content-Type": "text/plain"}),
+        )
 
-    with pytest.raises(expected_exception):
+    with patch("asyncio.sleep", AsyncMock()), pytest.raises(expected_exception):
         await melcloudhome_client.get_context()
     aresponses.assert_plan_strictly_followed()
