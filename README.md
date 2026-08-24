@@ -148,7 +148,7 @@ ws = client.websocket()
 task = asyncio.create_task(_listen(ws))  # _listen iterates `async for delta in ws.stream()`
 
 # on shutdown (e.g. async_unload_entry):
-await ws.close()   # stops gracefully; stream() ends on its own
+await ws.close()  # stops gracefully; stream() ends on its own
 await task
 ~~~
 
