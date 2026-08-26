@@ -5,10 +5,11 @@ import socket
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from importlib import metadata
-from typing import Any, Self, cast
+from typing import Any, Self
 
 from aiohttp import ClientError, ClientResponseError, ClientSession, ClientTimeout
 from aiohttp.hdrs import METH_GET, METH_POST, METH_PUT
+from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 from yarl import URL
 
 from aiomelcloudhome.models.telemetry import MeasurementEntry, TelemetryValue
@@ -35,6 +36,10 @@ except metadata.PackageNotFoundError:  # pragma: no cover
 API_BASE = "https://mobile.bff.melcloudhome.com"
 
 _LOGGER = logging.getLogger(__name__)
+
+_RETRY_ATTEMPTS = 3
+_RETRY_WAIT_MIN = 0.5
+_RETRY_WAIT_MAX = 2.0
 
 
 class MELCloudHome:
@@ -85,8 +90,8 @@ class MELCloudHome:
         params: dict[str, str] | None = None,
         json: dict[str, Any] | None = None,
         timeout: float | None = None,
-    ) -> dict[str, Any]:
-        """Make an authenticated API request with retry logic."""
+    ) -> Any:
+        """Make an authenticated API request, retrying transient network failures."""
         token = await self._auth.async_get_access_token()
         url = URL(self._api_base) / uri.lstrip("/")
         headers = {
@@ -95,29 +100,40 @@ class MELCloudHome:
             "User-Agent": f"aiomelcloudhome/{VERSION}",
         }
 
-        try:
-            async with self._session.request(
-                method,
-                url,
-                headers=headers,
-                params=params,
-                json=json,
-                timeout=ClientTimeout(total=timeout or self._request_timeout),
-            ) as resp:
-                match resp.status:
-                    case 401:
-                        raise MelCloudHomeAuthenticationError("Authentication failed")
-                    case 404:
-                        raise MelCloudHomeNotFoundError(f"Resource not found: {uri}")
-                resp.raise_for_status()
-                if resp.content_length == 0 or resp.status in (204, 304):
-                    return {}
-                _LOGGER.debug("API response for %s %s: %s", method, uri, await resp.text())
-                return cast("dict[str, Any]", await resp.json(content_type=None))
-        except TimeoutError as err:
-            raise MelCloudHomeTimeoutError(f"Request timed out: {err}") from err
-        except (ClientResponseError, ClientError, socket.gaierror) as err:
-            raise MelCloudHomeConnectionError(f"Connection error: {err}") from err
+        async for attempt in AsyncRetrying(
+            stop=stop_after_attempt(_RETRY_ATTEMPTS),
+            wait=wait_exponential(min=_RETRY_WAIT_MIN, max=_RETRY_WAIT_MAX),
+            retry=retry_if_exception_type((MelCloudHomeTimeoutError, MelCloudHomeConnectionError)),
+            reraise=True,
+        ):
+            with attempt:
+                try:
+                    response = await self._session.request(
+                        method,
+                        url,
+                        headers=headers,
+                        params=params,
+                        json=json,
+                        timeout=ClientTimeout(total=timeout or self._request_timeout),
+                    )
+                    response.raise_for_status()
+                except TimeoutError as err:
+                    raise MelCloudHomeTimeoutError(f"Request timed out: {err}") from err
+                except ClientResponseError as err:
+                    match err.status:
+                        case 401:
+                            raise MelCloudHomeAuthenticationError("Authentication failed") from err
+                        case 404:
+                            raise MelCloudHomeNotFoundError(f"Resource not found: {uri}") from err
+                        case _:
+                            raise MelCloudHomeConnectionError(f"Connection error: {err}") from err
+                except (ClientError, socket.gaierror) as err:
+                    raise MelCloudHomeConnectionError(f"Connection error: {err}") from err
+
+        if response.content_length == 0 or response.status in (204, 304):
+            return {}
+        _LOGGER.debug("API response for %s %s: %s", method, uri, await response.text())
+        return await response.json(content_type=None)
 
     async def get_context(self) -> UserContext:
         """Fetch the full user context (all buildings and devices)."""
@@ -276,7 +292,7 @@ class MELCloudHome:
         if not data:
             return None
         try:
-            datasets: list[dict[str, object]] = data[0].get("datasets", [])  # type: ignore[index]
+            datasets: list[dict[str, object]] = data[0].get("datasets", [])
             for dataset in datasets:
                 label = str(dataset.get("label", ""))
                 if "OUTDOOR_TEMPERATURE" in label.upper():

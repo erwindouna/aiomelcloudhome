@@ -3,6 +3,7 @@
 import json
 import socket
 from datetime import datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -10,6 +11,7 @@ import pytest
 from aresponses import ResponsesMockServer
 
 from aiomelcloudhome import MELCloudHome, MelCloudHomeAuthenticationError, MelCloudHomeConnectionError, MelCloudHomeTimeoutError
+from aiomelcloudhome.aiomelcloudhome import _RETRY_ATTEMPTS
 from aiomelcloudhome.auth import AbstractAuth, MelCloudHomeAuth, _generate_pkce_pair
 from aiomelcloudhome.models.ata import ATAUnit
 from aiomelcloudhome.models.atw import ATWUnit, ATWZoneMode
@@ -97,10 +99,37 @@ async def test_request_error_wrapping(
     request_side_effect: Exception,
     expected_exception: type[Exception],
 ) -> None:
-    """Test that low-level request failures are mapped to client-level exceptions."""
-    with patch.object(melcloudhome_client._session, "request", side_effect=request_side_effect):
+    """Test that low-level request failures are retried and then mapped to client-level exceptions."""
+    with patch("asyncio.sleep", AsyncMock()), patch.object(melcloudhome_client._session, "request", side_effect=request_side_effect) as mock_request:
         with pytest.raises(expected_exception):
             await melcloudhome_client.get_context()
+        assert mock_request.call_count == _RETRY_ATTEMPTS
+
+
+async def test_request_retries_transient_errors_then_succeeds(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome) -> None:
+    """Test that a transient connection error is retried and a subsequent success is returned."""
+    aresponses.add(
+        "mobile.bff.melcloudhome.com",
+        "/context",
+        "GET",
+        aresponses.Response(status=200, text=json.dumps({"buildings": [], "guestBuildings": []}), headers={"Content-Type": "application/json"}),
+    )
+
+    real_request = aiohttp.ClientSession.request
+    call_count = 0
+
+    def flaky_request(session: aiohttp.ClientSession, *args: Any, **kwargs: Any) -> Any:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise aiohttp.ClientConnectionError("connection refused")
+        return real_request(session, *args, **kwargs)
+
+    with patch("asyncio.sleep", AsyncMock()), patch.object(aiohttp.ClientSession, "request", flaky_request):
+        ctx = await melcloudhome_client.get_context()
+
+    assert ctx.buildings == []
+    assert call_count == 2
 
 
 async def test_get_outdoor_temperature_no_matching_dataset(aresponses: ResponsesMockServer, melcloudhome_client: MELCloudHome) -> None:
