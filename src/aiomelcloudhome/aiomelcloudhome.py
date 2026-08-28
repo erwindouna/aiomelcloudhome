@@ -130,10 +130,13 @@ class MELCloudHome:
                 except (ClientError, socket.gaierror) as err:
                     raise MelCloudHomeConnectionError(f"Connection error: {err}") from err
 
-        if response.content_length == 0 or response.status in (204, 304):
-            return {}
-        _LOGGER.debug("API response for %s %s: %s", method, uri, await response.text())
-        return await response.json(content_type=None)
+        try:
+            if response.content_length == 0 or response.status in (204, 304):
+                return {}
+            _LOGGER.debug("API response for %s %s: %s", method, uri, await response.text())
+            return await response.json(content_type=None)
+        except (ClientError, socket.gaierror) as err:
+            raise MelCloudHomeConnectionError(f"Connection error: {err}") from err
 
     async def get_context(self) -> UserContext:
         """Fetch the full user context (all buildings and devices)."""
