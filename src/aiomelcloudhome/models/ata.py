@@ -207,7 +207,7 @@ class ATAUnitControl(BaseModel):
 
     def to_api_payload(self) -> dict[str, Any]:
         """Serialize to the API request body."""
-        return {
+        payload = {
             "power": self.power,
             "operationMode": self.operation_mode,
             "setTemperature": self.set_temperature,
@@ -217,6 +217,7 @@ class ATAUnitControl(BaseModel):
             "temperatureIncrementOverride": None,
             "inStandbyMode": self.in_standby_mode,
         }
+        return {key: value for key, value in payload.items() if value is not None}
 
 
 class ATACapabilities(BaseModel):
