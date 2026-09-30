@@ -27,6 +27,7 @@ class ATWOperationMode(StrEnum):
 
     STOP = "Stop"
     HOT_WATER = "HotWater"
+    HEAT = "Heat"
     HEAT_ZONES = "HeatZones"
     COOL = "Cool"
 
