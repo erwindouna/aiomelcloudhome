@@ -6,7 +6,7 @@ import pytest
 from syrupy.assertion import SnapshotAssertion
 
 from aiomelcloudhome.models.ata import ATAUnit
-from aiomelcloudhome.models.atw import ATWUnit
+from aiomelcloudhome.models.atw import ATWOperationMode, ATWUnit
 from aiomelcloudhome.models.context import Building, UserContext
 from tests import load_fixture
 
@@ -42,6 +42,27 @@ def test_atw_unit_from_api(context_data: dict[str, Any], snapshot: SnapshotAsser
     raw = context_data["buildings"][0]["airToWaterUnits"][0]
     unit = ATWUnit.model_validate(raw)
     assert unit == snapshot
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        pytest.param("Stop", ATWOperationMode.STOP, id="stop"),
+        pytest.param("HotWater", ATWOperationMode.HOT_WATER, id="hot_water"),
+        pytest.param("Heat", ATWOperationMode.HEAT, id="heat"),
+        pytest.param("Unknown", None, id="unknown"),
+    ],
+)
+def test_atw_unit_operation_mode(value: str, expected: ATWOperationMode | None) -> None:
+    """Test parsing the ATW operation mode reported by the unit."""
+    unit = ATWUnit.model_validate(
+        {
+            "id": "atw-unit-uuid-1",
+            "givenDisplayName": "Heat Pump",
+            "settings": [{"name": "OperationMode", "value": value}],
+        },
+    )
+    assert unit.operation_mode is expected
 
 
 def test_atw_unit_capabilities(context_data: dict[str, Any], snapshot: SnapshotAssertion) -> None:
