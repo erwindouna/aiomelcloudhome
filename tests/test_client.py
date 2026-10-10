@@ -312,11 +312,11 @@ async def test_auth_exchange_code_raises_on_error() -> None:
 
 
 async def test_auth_refresh_raises_on_non_400_error() -> None:
-    """Test that refresh() re-raises non-400 HTTP errors as MelCloudHomeAuthenticationError."""
+    """Test that refresh() raises MelCloudHomeAuthenticationError on a non-400 client error."""
     async with aiohttp.ClientSession() as session:
         auth = MelCloudHomeAuth(username="u", password="p", session=session)
         auth._refresh_token = "some_refresh_token"
-        _, mock_cm = _make_mock_response(500)
+        _, mock_cm = _make_mock_response(401)
         with patch.object(session, "post", return_value=mock_cm), pytest.raises(MelCloudHomeAuthenticationError):
             await auth.refresh()
 
