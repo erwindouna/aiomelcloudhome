@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 from syrupy.assertion import SnapshotAssertion
 
-from aiomelcloudhome.models.ata import ATAUnit
+from aiomelcloudhome.models.ata import ATACapabilities, ATAUnit
 from aiomelcloudhome.models.atw import ATWOperationMode, ATWUnit
 from aiomelcloudhome.models.context import Building, UserContext
 from tests import load_fixture
@@ -132,3 +132,37 @@ def test_atw_unit_exports_settings(context_data: dict[str, Any], snapshot: Snaps
         "raw_settings": unit.raw_settings,
         "settings": unit.settings,
     } == snapshot
+
+
+@pytest.mark.parametrize(
+    "capabilities",
+    [
+        pytest.param({"minTempCoolDry": 16, "maxTempCoolDry": 31, "hasStandby": True}, id="api_keys"),
+        pytest.param({"minTempCool": 16, "maxTempCool": 31, "hasStandbyMode": True}, id="legacy_keys"),
+    ],
+)
+def test_ata_cool_range_and_standby(capabilities: dict[str, Any]) -> None:
+    """The cool/dry range and standby flag parse from the API keys and the legacy keys."""
+    caps = ATACapabilities.model_validate(capabilities)
+    assert (caps.min_temp_cool, caps.max_temp_cool, caps.has_standby_mode) == (16.0, 31.0, True)
+
+
+@pytest.mark.parametrize(
+    ("capabilities", "settings", "expected"),
+    [
+        pytest.param({}, [{"name": "VaneVerticalDirection", "value": "Auto"}], (True, None), id="vertical_setting"),
+        pytest.param({"hasAirDirection": True}, [], (True, None), id="air_direction"),
+        pytest.param({}, [{"name": "VaneHorizontalDirection", "value": "Centre"}], (None, True), id="horizontal_setting"),
+        pytest.param({"hasVaneVertical": False, "hasVaneHorizontal": False}, [], (False, False), id="explicit"),
+        pytest.param({"hasAirDirection": False}, [], (None, None), id="none"),
+    ],
+)
+def test_ata_vane_capabilities(
+    capabilities: dict[str, Any],
+    settings: list[dict[str, str]],
+    expected: tuple[bool | None, bool | None],
+) -> None:
+    """The API sends no vane flags, so they come from the settings and hasAirDirection."""
+    unit = ATAUnit.model_validate({"id": "ata-1", "givenDisplayName": "AC", "settings": settings, "capabilities": capabilities})
+    assert unit.capabilities is not None
+    assert (unit.capabilities.has_vane_vertical, unit.capabilities.has_vane_horizontal) == expected

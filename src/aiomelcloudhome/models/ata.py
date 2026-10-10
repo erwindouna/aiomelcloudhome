@@ -5,7 +5,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Self, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 _T = TypeVar("_T", bound=StrEnum)
 _UnitT = TypeVar("_UnitT", bound=BaseModel)
@@ -220,15 +220,21 @@ class ATAUnitControl(BaseModel):
 
 
 class ATACapabilities(BaseModel):
-    """Capabilities of an Air-to-Air unit."""
+    """Capabilities of an Air-to-Air unit.
+
+    The API sends ``minTempCoolDry``/``maxTempCoolDry`` and ``hasStandby``; the older
+    ``minTempCool``/``maxTempCool`` and ``hasStandbyMode`` keys are still accepted.
+    It sends no fan mode, vane or outdoor temperature sensor flags: ``ATAUnit`` derives the
+    vane flags from the settings, the others stay ``None``.
+    """
 
     model_config = ConfigDict(populate_by_name=True)
 
     number_of_fan_speeds: int | None = Field(default=None, alias="numberOfFanSpeeds")
     min_temp_heat: float | None = Field(default=None, alias="minTempHeat")
     max_temp_heat: float | None = Field(default=None, alias="maxTempHeat")
-    min_temp_cool: float | None = Field(default=None, alias="minTempCool")
-    max_temp_cool: float | None = Field(default=None, alias="maxTempCool")
+    min_temp_cool: float | None = Field(default=None, validation_alias=AliasChoices("minTempCoolDry", "minTempCool"))
+    max_temp_cool: float | None = Field(default=None, validation_alias=AliasChoices("maxTempCoolDry", "maxTempCool"))
     min_temp_auto: float | None = Field(default=None, alias="minTempAutomatic")
     max_temp_auto: float | None = Field(default=None, alias="maxTempAutomatic")
     has_half_degree_increments: bool | None = Field(default=None, alias="hasHalfDegreeIncrements")
@@ -240,7 +246,16 @@ class ATACapabilities(BaseModel):
     has_energy_consumed_meter: bool | None = Field(default=None, alias="hasEnergyConsumedMeter")
     has_vane_vertical: bool | None = Field(default=None, alias="hasVaneVertical")
     has_vane_horizontal: bool | None = Field(default=None, alias="hasVaneHorizontal")
-    has_standby_mode: bool | None = Field(default=None, alias="hasStandbyMode")
+    has_standby_mode: bool | None = Field(default=None, validation_alias=AliasChoices("hasStandby", "hasStandbyMode"))
+    has_heat_operation_mode: bool | None = Field(default=None, alias="hasHeatOperationMode")
+    has_automatic_fan_speed: bool | None = Field(default=None, alias="hasAutomaticFanSpeed")
+    has_air_direction: bool | None = Field(default=None, alias="hasAirDirection")
+    has_swing: bool | None = Field(default=None, alias="hasSwing")
+    supports_wide_vane: bool | None = Field(default=None, alias="supportsWideVane")
+    has_extended_temperature_range: bool | None = Field(default=None, alias="hasExtendedTemperatureRange")
+    has_demand_side_control: bool | None = Field(default=None, alias="hasDemandSideControl")
+    is_multi_split_system: bool | None = Field(default=None, alias="isMultiSplitSystem")
+    is_legacy_device: bool | None = Field(default=None, alias="isLegacyDevice")
 
 
 class ATAUnit(BaseModel):
@@ -310,12 +325,6 @@ class ATAUnit(BaseModel):
         capabilities_payload = data.get("capabilities")
         if isinstance(capabilities_payload, dict):
             capabilities_payload = dict(capabilities_payload)
-            if "minTempCool" not in capabilities_payload and "minTempCoolDry" in capabilities_payload:
-                capabilities_payload["minTempCool"] = capabilities_payload["minTempCoolDry"]
-            if "maxTempCool" not in capabilities_payload and "maxTempCoolDry" in capabilities_payload:
-                capabilities_payload["maxTempCool"] = capabilities_payload["maxTempCoolDry"]
-            if "hasStandbyMode" not in capabilities_payload and "hasStandby" in capabilities_payload:
-                capabilities_payload["hasStandbyMode"] = capabilities_payload["hasStandby"]
             if "hasVaneVertical" not in capabilities_payload and (
                 "VaneVerticalDirection" in settings or capabilities_payload.get("hasAirDirection") is True
             ):
