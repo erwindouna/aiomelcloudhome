@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  DEFAULT_PYTHON: "3.11"
+  DEFAULT_PYTHON: "3.12"
 
 jobs:
   codespell:
@@ -35,9 +35,9 @@ jobs:
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> $GITHUB_PATH
       - name: 🏗 Install workflow dependencies
-        run: uv sync --all-groups
+        run: uv sync --all-groups --locked
       - name: 🏗 Install Python dependencies
-        run: uv sync --all-groups
+        run: uv sync --all-groups --locked
       - name: 🚀 Check code for common misspellings
         run: uv run pre-commit run codespell --all-files
 
@@ -65,9 +65,9 @@ jobs:
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> $GITHUB_PATH
       - name: 🏗 Install workflow dependencies
-        run: uv sync --all-groups
+        run: uv sync --all-groups --locked
       - name: 🏗 Install Python dependencies
-        run: uv sync --all-groups
+        run: uv sync --all-groups --locked
       - name: 🚀 Run ruff linter
         run: uv run ruff check --output-format=github .
       - name: 🚀 Run ruff formatter
@@ -97,9 +97,9 @@ jobs:
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> $GITHUB_PATH
       - name: 🏗 Install workflow dependencies
-        run: uv sync --all-groups
+        run: uv sync --all-groups --locked
       - name: 🏗 Install Python dependencies
-        run: uv sync --all-groups
+        run: uv sync --all-groups --locked
       - name: 🚀 Check Python AST
         run: uv run pre-commit run check-ast --all-files
       - name: 🚀 Check for case conflicts
@@ -151,9 +151,9 @@ jobs:
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> $GITHUB_PATH
       - name: 🏗 Install workflow dependencies
-        run: uv sync --all-groups
+        run: uv sync --all-groups --locked
       - name: 🏗 Install Python dependencies
-        run: uv sync --all-groups
+        run: uv sync --all-groups --locked
       - name: 🚀 Run pylint
         run: uv run pre-commit run pylint --all-files
 
@@ -181,8 +181,8 @@ jobs:
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> $GITHUB_PATH
       - name: 🏗 Install workflow dependencies
-        run: uv sync --all-groups
+        run: uv sync --all-groups --locked
       - name: 🏗 Install Python dependencies
-        run: uv sync --all-groups
+        run: uv sync --all-groups --locked
       - name: 🚀 Run yamllint
         run: uv run yamllint .

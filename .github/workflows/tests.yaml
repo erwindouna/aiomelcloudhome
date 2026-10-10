@@ -39,9 +39,9 @@ jobs:
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> $GITHUB_PATH
       - name: 🏗 Install workflow dependencies
-        run: uv sync --all-groups
+        run: uv sync --all-groups --locked
       - name: 🏗 Install dependencies
-        run: uv sync --all-groups
+        run: uv sync --all-groups --locked
       - name: 🚀 Run pytest
         run: uv run pytest -v --cov src tests
       - name: ⬆️ Upload coverage artifact
@@ -81,9 +81,9 @@ jobs:
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> $GITHUB_PATH
       - name: 🏗 Install workflow dependencies
-        run: uv sync --all-groups
+        run: uv sync --all-groups --locked
       - name: 🏗 Install dependencies
-        run: uv sync --all-groups
+        run: uv sync --all-groups --locked
       - name: 🚀 Process coverage results
         run: |
           uv run coverage combine coverage*/.coverage*
