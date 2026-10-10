@@ -7,8 +7,14 @@ import aiohttp
 import pytest
 from aiohttp import ClientSession
 
+from aiomelcloudhome import MELCloudHome
 from aiomelcloudhome.auth import MelCloudHomeAuth
-from aiomelcloudhome.exceptions import MelCloudHomeAuthenticationError
+from aiomelcloudhome.exceptions import (
+    MelCloudHomeAuthenticationError,
+    MelCloudHomeConnectionError,
+    MelCloudHomeError,
+    MelCloudHomeTimeoutError,
+)
 
 
 @pytest.fixture(name="auth")
@@ -158,7 +164,7 @@ async def test_authenticate_no_auth_code_in_callback() -> None:
 
 
 async def test_authenticate_cognito_no_csrf_raises() -> None:
-    """Test that a missing CSRF token on the Cognito page raises MelCloudHomeAuthenticationError."""
+    """Test that a page without a CSRF token (e.g. maintenance) raises MelCloudHomeConnectionError."""
     async with aiohttp.ClientSession() as session:
         auth = MelCloudHomeAuth(username="u@example.com", password="pass", session=session)
 
@@ -172,7 +178,7 @@ async def test_authenticate_cognito_no_csrf_raises() -> None:
             return auth_cm
 
         with patch.object(session, "post", side_effect=_post_side_effect), patch.object(session, "get", side_effect=_get_side_effect):
-            with pytest.raises(MelCloudHomeAuthenticationError, match="CSRF"):
+            with pytest.raises(MelCloudHomeConnectionError, match="CSRF"):
                 await auth.authenticate()
 
 
@@ -195,3 +201,146 @@ async def test_authenticate_full_flow_with_identity_server_callback() -> None:
             await auth.authenticate()
 
         assert auth.access_token == "acc_tok"
+
+
+_PAR_OK: dict[str, object] = {"request_uri": "urn:ietf:params:oauth:request_uri:test"}
+_LOGIN_FORM = '<input name="_csrf" value="csrf_token_value">'
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        pytest.param(400, MelCloudHomeAuthenticationError, id="400"),
+        pytest.param(429, MelCloudHomeConnectionError, id="429"),
+        pytest.param(500, MelCloudHomeConnectionError, id="500"),
+        pytest.param(503, MelCloudHomeConnectionError, id="503"),
+    ],
+)
+async def test_authenticate_par_status(status: int, expected: type[MelCloudHomeError]) -> None:
+    """Server errors on the PAR request are connection errors, client errors stay auth errors."""
+    async with aiohttp.ClientSession() as session:
+        auth = MelCloudHomeAuth(username="u@example.com", password="pass", session=session)
+        with patch.object(session, "post", return_value=_make_cm(status)), pytest.raises(expected, match="PAR request failed"):
+            await auth.authenticate()
+
+
+async def test_authenticate_par_non_json_raises_connection_error() -> None:
+    """A PAR response that isn't the expected JSON (e.g. a maintenance page) is a connection error."""
+    async with aiohttp.ClientSession() as session:
+        auth = MelCloudHomeAuth(username="u@example.com", password="pass", session=session)
+        par_cm = _make_cm(200)
+        par_cm.__aenter__.return_value.json = AsyncMock(side_effect=ValueError("not json"))
+        with patch.object(session, "post", return_value=par_cm), pytest.raises(MelCloudHomeConnectionError, match="Unexpected PAR response"):
+            await auth.authenticate()
+
+
+@pytest.mark.parametrize("status", [429, 503])
+async def test_authenticate_login_page_unavailable(status: int) -> None:
+    """A 5xx/429 on the login page is a connection error."""
+    async with aiohttp.ClientSession() as session:
+        auth = MelCloudHomeAuth(username="u@example.com", password="pass", session=session)
+        with (
+            patch.object(session, "post", return_value=_make_cm(200, json_data=_PAR_OK)),
+            patch.object(session, "get", return_value=_make_cm(200, text_data="<html>Maintenance</html>")) as mock_get,
+        ):
+            mock_get.return_value.__aenter__.return_value.status = status
+            with pytest.raises(MelCloudHomeConnectionError, match="Login page unavailable"):
+                await auth.authenticate()
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        pytest.param(200, MelCloudHomeAuthenticationError, id="login_form_again"),
+        pytest.param(400, MelCloudHomeAuthenticationError, id="400"),
+        pytest.param(429, MelCloudHomeConnectionError, id="429"),
+        pytest.param(502, MelCloudHomeConnectionError, id="502"),
+    ],
+)
+async def test_authenticate_credential_post_status(status: int, expected: type[MelCloudHomeError]) -> None:
+    """Only a non-redirecting credential POST without a server error means wrong credentials."""
+    async with aiohttp.ClientSession() as session:
+        auth = MelCloudHomeAuth(username="u@example.com", password="pass", session=session)
+        credential_cm = _make_cm(200, text_data=_LOGIN_FORM)
+        credential_cm.__aenter__.return_value.status = status
+        with (
+            patch.object(session, "post", side_effect=[_make_cm(200, json_data=_PAR_OK), credential_cm]),
+            patch.object(session, "get", return_value=_make_cm(200, text_data=_LOGIN_FORM)),
+            pytest.raises(expected, match="Cognito credential submission"),
+        ):
+            await auth.authenticate()
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        pytest.param(400, MelCloudHomeAuthenticationError, id="400"),
+        pytest.param(429, MelCloudHomeConnectionError, id="429"),
+        pytest.param(500, MelCloudHomeConnectionError, id="500"),
+    ],
+)
+async def test_exchange_code_status(status: int, expected: type[MelCloudHomeError]) -> None:
+    """Server errors on the code exchange are connection errors."""
+    async with aiohttp.ClientSession() as session:
+        auth = MelCloudHomeAuth(username="u@example.com", password="pass", session=session)
+        with patch.object(session, "post", return_value=_make_cm(status)), pytest.raises(expected, match="Token exchange failed"):
+            await auth._exchange_code("code", "verifier")
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        pytest.param(401, MelCloudHomeAuthenticationError, id="401"),
+        pytest.param(429, MelCloudHomeConnectionError, id="429"),
+        pytest.param(500, MelCloudHomeConnectionError, id="500"),
+        pytest.param(503, MelCloudHomeConnectionError, id="503"),
+    ],
+)
+async def test_refresh_status(status: int, expected: type[MelCloudHomeError]) -> None:
+    """Server errors on the token refresh are connection errors and don't trigger a new login."""
+    async with aiohttp.ClientSession() as session:
+        auth = MelCloudHomeAuth(username="u@example.com", password="pass", session=session)
+        auth._refresh_token = "refresh"
+        with (
+            patch.object(session, "post", return_value=_make_cm(status)),
+            patch.object(MelCloudHomeAuth, "authenticate", new_callable=AsyncMock) as mock_authenticate,
+            pytest.raises(expected, match="Token refresh failed"),
+        ):
+            await auth.refresh()
+        mock_authenticate.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("side_effect", "expected"),
+    [
+        pytest.param(aiohttp.ClientConnectionError("boom"), MelCloudHomeConnectionError, id="client_error"),
+        pytest.param(TimeoutError, MelCloudHomeTimeoutError, id="timeout"),
+    ],
+)
+@pytest.mark.parametrize("method", ["authenticate", "refresh"])
+async def test_transport_errors_are_wrapped(side_effect: Exception | type[Exception], expected: type[MelCloudHomeError], method: str) -> None:
+    """Transport errors during login or refresh map to connection/timeout errors."""
+    async with aiohttp.ClientSession() as session:
+        auth = MelCloudHomeAuth(username="u@example.com", password="pass", session=session)
+        auth._refresh_token = "refresh"
+        with patch.object(session, "post", side_effect=side_effect), pytest.raises(expected):
+            await getattr(auth, method)()
+
+
+async def test_request_timeout_applied_to_auth_requests() -> None:
+    """Every auth request carries the configured request timeout."""
+    async with aiohttp.ClientSession() as session:
+        auth = MelCloudHomeAuth(username="u@example.com", password="pass", session=session, request_timeout=5.0)
+        auth._refresh_token = "refresh"
+        token_data: dict[str, object] = {"access_token": "a", "refresh_token": "r", "expires_in": 3600}
+        with patch.object(session, "post", return_value=_make_cm(200, json_data=token_data)) as mock_post:
+            await auth.refresh()
+        assert mock_post.call_args.kwargs["timeout"] == aiohttp.ClientTimeout(total=5.0)
+
+
+async def test_client_passes_request_timeout_to_auth() -> None:
+    """The client hands its request timeout to the auth it creates."""
+    async with aiohttp.ClientSession() as session:
+        client = MELCloudHome(username="u@example.com", password="pass", session=session, request_timeout=7.0)
+        assert isinstance(client._auth, MelCloudHomeAuth)
+        assert client._auth._timeout == aiohttp.ClientTimeout(total=7.0)
