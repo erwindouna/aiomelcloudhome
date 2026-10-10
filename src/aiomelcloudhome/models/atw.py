@@ -23,10 +23,13 @@ _ATW_FLOAT_SETTINGS = frozenset(
 
 
 class ATWOperationMode(StrEnum):
-    """Overall operation mode for Air-to-Water units."""
+    """What an Air-to-Water unit is doing right now (read-only status)."""
 
     STOP = "Stop"
     HOT_WATER = "HotWater"
+    HEATING = "Heating"
+    COOLING = "Cooling"
+    FREEZE_STAT = "FreezeStat"
     HEAT = "Heat"
     HEAT_ZONES = "HeatZones"
     COOL = "Cool"
@@ -53,19 +56,21 @@ def decode_atw_setting(name: str, value: Any) -> Any:
     """Decode a single ATW setting value from a WebSocket ``unitStateChanged`` frame.
 
     Handles the typed (bool/number) and string-name shapes. ATW enum integer codes have
-    not been observed on the socket, so an unmappable value is returned unchanged rather
-    than dropped.
+    not been observed on the socket, so an unknown enum value decodes to ``None`` and is
+    skipped when the delta is applied, as for ATA.
     """
     if name in _ATW_BOOL_SETTINGS:
         return _coerce_bool_value(value)
     if name in _ATW_FLOAT_SETTINGS:
         return _coerce_float_value(value)
     enum_cls = _ATW_ENUM_SETTINGS.get(name)
-    if enum_cls is not None and value is not None and not isinstance(value, bool):
+    if enum_cls is not None:
+        if value is None or isinstance(value, bool):
+            return None
         try:
             return enum_cls(str(value).strip())
         except ValueError:
-            return value
+            return None
     return value
 
 

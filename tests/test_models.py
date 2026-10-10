@@ -50,6 +50,9 @@ def test_atw_unit_from_api(context_data: dict[str, Any], snapshot: SnapshotAsser
         pytest.param("Stop", ATWOperationMode.STOP, id="stop"),
         pytest.param("HotWater", ATWOperationMode.HOT_WATER, id="hot_water"),
         pytest.param("Heat", ATWOperationMode.HEAT, id="heat"),
+        pytest.param("Heating", ATWOperationMode.HEATING, id="heating"),
+        pytest.param("Cooling", ATWOperationMode.COOLING, id="cooling"),
+        pytest.param("FreezeStat", ATWOperationMode.FREEZE_STAT, id="freeze_stat"),
         pytest.param("Unknown", None, id="unknown"),
     ],
 )
