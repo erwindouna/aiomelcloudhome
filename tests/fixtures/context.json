@@ -135,70 +135,101 @@
               "value": "True"
             },
             {
+              "name": "InStandbyMode",
+              "value": "False"
+            },
+            {
               "name": "OperationMode",
-              "value": "HeatZones"
+              "value": "Stop"
+            },
+            {
+              "name": "HasZone2",
+              "value": "None"
             },
             {
               "name": "OperationModeZone1",
               "value": "HeatRoomTemperature"
             },
             {
-              "name": "SetTemperatureZone1",
-              "value": "21"
-            },
-            {
               "name": "RoomTemperatureZone1",
               "value": "20"
             },
             {
-              "name": "SetTankWaterTemperature",
-              "value": "50"
+              "name": "SetTemperatureZone1",
+              "value": "21"
+            },
+            {
+              "name": "ProhibitHotWater",
+              "value": "False"
             },
             {
               "name": "TankWaterTemperature",
               "value": "48"
             },
             {
-              "name": "ForcedHotWaterMode",
+              "name": "SetTankWaterTemperature",
+              "value": "50"
+            },
+            {
+              "name": "HasCoolingMode",
               "value": "False"
             },
             {
-              "name": "HasZone2",
-              "value": "0"
-            },
-            {
-              "name": "InStandbyMode",
+              "name": "ForcedHotWaterMode",
               "value": "False"
             },
             {
               "name": "IsInError",
               "value": "False"
+            },
+            {
+              "name": "ErrorCode",
+              "value": ""
+            },
+            {
+              "name": "OutdoorTemperature",
+              "value": "12"
             }
           ],
           "capabilities": {
+            "maxImportPower": 0,
+            "maxHeatOutput": 0,
+            "temperatureUnit": "",
             "hasHotWater": true,
-            "hasZone2": false,
-            "hasHalfDegrees": false,
-            "hasCoolingMode": false,
+            "immersionHeaterCapacity": 0,
             "minSetTankTemperature": 40,
             "maxSetTankTemperature": 60,
-            "hasStandbyMode": false,
-            "hasEnergyConsumedMeter": true
+            "minSetTemperature": 10,
+            "maxSetTemperature": 30,
+            "temperatureIncrement": 0.5,
+            "temperatureIncrementOverride": 2,
+            "hasHalfDegrees": false,
+            "hasZone2": false,
+            "hasDualRoomTemperature": false,
+            "hasThermostatZone1": true,
+            "hasThermostatZone2": true,
+            "hasHeatZone1": true,
+            "hasHeatZone2": false,
+            "hasMeasuredEnergyConsumption": false,
+            "hasMeasuredEnergyProduction": false,
+            "hasEstimatedEnergyConsumption": true,
+            "hasEstimatedEnergyProduction": true,
+            "ftcModel": 3,
+            "refridgerentAddress": 0,
+            "hasDemandSideControl": true,
+            "hasWirelessRemote": false,
+            "hasBoiler": false
           },
           "rssi": -52,
           "holidayMode": null,
           "frostProtection": {
-            "active": false,
             "enabled": true,
             "min": 5,
-            "max": 8
+            "max": 8,
+            "zone1Active": false,
+            "zone2Active": false
           },
-          "overheatProtection": {
-            "active": false,
-            "enabled": false,
-            "min": 0,
-            "max": 0
-          }
+          "overheatProtection": null
         }
       ]
     }

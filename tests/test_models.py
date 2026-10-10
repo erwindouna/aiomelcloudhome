@@ -6,7 +6,7 @@ import pytest
 from syrupy.assertion import SnapshotAssertion
 
 from aiomelcloudhome.models.ata import ATAUnit
-from aiomelcloudhome.models.atw import ATWOperationMode, ATWUnit
+from aiomelcloudhome.models.atw import ATWCapabilities, ATWFrostProtection, ATWOperationMode, ATWUnit
 from aiomelcloudhome.models.context import Building, UserContext
 from tests import load_fixture
 
@@ -132,3 +132,95 @@ def test_atw_unit_exports_settings(context_data: dict[str, Any], snapshot: Snaps
         "raw_settings": unit.raw_settings,
         "settings": unit.settings,
     } == snapshot
+
+
+@pytest.mark.parametrize(
+    ("capabilities", "setting", "expected"),
+    [
+        pytest.param({"hasCoolingMode": True}, "False", True, id="capability_wins"),
+        pytest.param({"hasHotWater": True}, "True", True, id="from_settings"),
+        pytest.param({"hasHotWater": True}, None, None, id="unknown"),
+    ],
+)
+def test_atw_has_cooling_mode(*, capabilities: dict[str, Any], setting: str | None, expected: bool | None) -> None:
+    """ATW reports HasCoolingMode in its settings; it fills the capability when that is missing."""
+    settings = [] if setting is None else [{"name": "HasCoolingMode", "value": setting}]
+    unit = ATWUnit.model_validate({"id": "atw-1", "givenDisplayName": "Heat Pump", "settings": settings, "capabilities": capabilities})
+    assert unit.capabilities is not None
+    assert unit.capabilities.has_cooling_mode is expected
+
+
+@pytest.mark.parametrize(
+    ("capabilities", "expected"),
+    [
+        pytest.param({"hasZone2": True}, True, id="capability_true"),
+        pytest.param({"hasZone2": False}, False, id="capability_false"),
+        pytest.param(None, False, id="settings_fallback"),
+    ],
+)
+def test_atw_has_zone2_from_capabilities(*, capabilities: dict[str, Any] | None, expected: bool) -> None:
+    """has_zone2 comes from capabilities.hasZone2; the free-text HasZone2 setting is only a fallback."""
+    unit = ATWUnit.model_validate(
+        {"id": "atw-1", "givenDisplayName": "Heat Pump", "settings": [{"name": "HasZone2", "value": "None"}], "capabilities": capabilities},
+    )
+    assert unit.has_zone2 is expected
+
+
+@pytest.mark.parametrize(
+    ("capabilities", "expected"),
+    [
+        pytest.param({"minSetTemperature": 10, "maxSetTemperature": 30}, (10.0, 30.0, 10.0, 30.0), id="shared_range"),
+        pytest.param(
+            {"minSetTemperatureZone1": 12, "maxSetTemperatureZone1": 28, "minSetTemperatureZone2": 15, "maxSetTemperatureZone2": 25},
+            (12.0, 28.0, 15.0, 25.0),
+            id="per_zone",
+        ),
+    ],
+)
+def test_atw_zone_temperature_range(capabilities: dict[str, Any], expected: tuple[float, float, float, float]) -> None:
+    """The API's single zone range applies to both zones; per-zone keys are still accepted."""
+    caps = ATWCapabilities.model_validate(capabilities)
+    assert (
+        caps.min_set_temperature_zone1,
+        caps.max_set_temperature_zone1,
+        caps.min_set_temperature_zone2,
+        caps.max_set_temperature_zone2,
+    ) == expected
+
+
+@pytest.mark.parametrize(
+    ("zone1_active", "zone2_active", "expected"),
+    [
+        pytest.param(False, False, False, id="inactive"),
+        pytest.param(True, False, True, id="zone1"),
+        pytest.param(False, True, True, id="zone2"),
+    ],
+)
+def test_atw_frost_protection_zones(*, zone1_active: bool, zone2_active: bool, expected: bool) -> None:
+    """ATW frost protection reports activity per zone; ``active`` is set when either zone is."""
+    unit = ATWUnit.model_validate(
+        {
+            "id": "atw-1",
+            "givenDisplayName": "Heat Pump",
+            "frostProtection": {"enabled": True, "min": 5, "max": 8, "zone1Active": zone1_active, "zone2Active": zone2_active},
+        },
+    )
+    assert isinstance(unit.frost_protection, ATWFrostProtection)
+    assert unit.frost_protection.zone1_active is zone1_active
+    assert unit.frost_protection.zone2_active is zone2_active
+    assert unit.frost_protection.active is expected
+
+
+@pytest.mark.parametrize(
+    ("capabilities", "expected"),
+    [
+        pytest.param({"hasMeasuredEnergyConsumption": False, "hasEstimatedEnergyConsumption": True}, True, id="estimated"),
+        pytest.param({"hasMeasuredEnergyConsumption": True, "hasEstimatedEnergyConsumption": False}, True, id="measured"),
+        pytest.param({"hasMeasuredEnergyConsumption": False, "hasEstimatedEnergyConsumption": False}, False, id="none"),
+        pytest.param({"hasEnergyConsumedMeter": False, "hasEstimatedEnergyConsumption": True}, False, id="explicit_wins"),
+        pytest.param({"hasHotWater": True}, None, id="unknown"),
+    ],
+)
+def test_atw_has_energy_consumed_meter(*, capabilities: dict[str, Any], expected: bool | None) -> None:
+    """ATW units report measured or estimated consumption instead of hasEnergyConsumedMeter."""
+    assert ATWCapabilities.model_validate(capabilities).has_energy_consumed_meter is expected
