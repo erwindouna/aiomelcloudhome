@@ -272,3 +272,37 @@ def test_apply_delta_empty_changes_returns_same_instance() -> None:
     unit = _atw_unit()
     delta = UnitStateDelta(unit_id="atw-1", unit_type="atw", changes={})
     assert delta.apply_to(unit) is unit
+
+
+def _atw_frame(name: str, value: Any) -> list[dict[str, Any]]:
+    """Build a single-setting ATW unitStateChanged frame."""
+    return [
+        {
+            "messageType": "unitStateChanged",
+            "Data": {"id": "atw-1", "unitType": "atw", "settings": [{"name": name, "value": value}]},
+        },
+    ]
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        pytest.param("Heating", ATWOperationMode.HEATING, id="heating"),
+        pytest.param("Cooling", ATWOperationMode.COOLING, id="cooling"),
+        pytest.param("FreezeStat", ATWOperationMode.FREEZE_STAT, id="freeze_stat"),
+        pytest.param("Defrost", None, id="unknown"),
+        pytest.param(True, None, id="bool"),
+    ],
+)
+def test_atw_operation_mode_delta(value: Any, expected: ATWOperationMode | None) -> None:
+    """ATW OperationMode deltas decode to the enum; unknown values decode to None."""
+    assert parse_frame(_atw_frame("OperationMode", value))[0].changes == {"OperationMode": expected}
+
+
+def test_atw_apply_delta_unknown_operation_mode_keeps_state() -> None:
+    """An unknown ATW OperationMode from the socket never puts a plain string on the unit."""
+    unit = _atw_unit()
+    (delta,) = parse_frame(_atw_frame("OperationMode", "Defrost"))
+    assert delta.apply_to(unit) is unit
+    assert unit.operation_mode is ATWOperationMode.HEAT_ZONES
+    assert unit.settings["OperationMode"] is ATWOperationMode.HEAT_ZONES
