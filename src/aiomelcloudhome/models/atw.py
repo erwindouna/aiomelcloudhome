@@ -3,7 +3,7 @@
 from enum import StrEnum
 from typing import Any, Self, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .ata import FrostProtection, HolidayMode, OverheatProtection, _apply_unit_changes, _coerce_bool_value, _coerce_float_value
 
@@ -109,7 +109,14 @@ class ATWUnitControl(BaseModel):
 
 
 class ATWCapabilities(BaseModel):
-    """Capabilities of an Air-to-Water unit."""
+    """Capabilities of an Air-to-Water unit.
+
+    The API reports one zone temperature range (``minSetTemperature``/``maxSetTemperature``)
+    that applies to both zones, and reports ``HasCoolingMode`` in the unit settings rather
+    than here; ``ATWUnit`` fills ``has_cooling_mode`` from the settings when it's missing.
+    Without ``hasEnergyConsumedMeter``, ``has_energy_consumed_meter`` follows the measured and
+    estimated consumption flags.
+    """
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -119,12 +126,41 @@ class ATWCapabilities(BaseModel):
     has_cooling_mode: bool | None = Field(default=None, alias="hasCoolingMode")
     min_set_tank_temperature: float | None = Field(default=None, alias="minSetTankTemperature")
     max_set_tank_temperature: float | None = Field(default=None, alias="maxSetTankTemperature")
-    min_set_temperature_zone1: float | None = Field(default=None, alias="minSetTemperatureZone1")
-    max_set_temperature_zone1: float | None = Field(default=None, alias="maxSetTemperatureZone1")
-    min_set_temperature_zone2: float | None = Field(default=None, alias="minSetTemperatureZone2")
-    max_set_temperature_zone2: float | None = Field(default=None, alias="maxSetTemperatureZone2")
+    min_set_temperature_zone1: float | None = Field(default=None, validation_alias=AliasChoices("minSetTemperatureZone1", "minSetTemperature"))
+    max_set_temperature_zone1: float | None = Field(default=None, validation_alias=AliasChoices("maxSetTemperatureZone1", "maxSetTemperature"))
+    min_set_temperature_zone2: float | None = Field(default=None, validation_alias=AliasChoices("minSetTemperatureZone2", "minSetTemperature"))
+    max_set_temperature_zone2: float | None = Field(default=None, validation_alias=AliasChoices("maxSetTemperatureZone2", "maxSetTemperature"))
     has_standby_mode: bool | None = Field(default=None, alias="hasStandbyMode")
     has_energy_consumed_meter: bool | None = Field(default=None, alias="hasEnergyConsumedMeter")
+    has_measured_energy_consumption: bool | None = Field(default=None, alias="hasMeasuredEnergyConsumption")
+    has_estimated_energy_consumption: bool | None = Field(default=None, alias="hasEstimatedEnergyConsumption")
+    has_measured_energy_production: bool | None = Field(default=None, alias="hasMeasuredEnergyProduction")
+    has_estimated_energy_production: bool | None = Field(default=None, alias="hasEstimatedEnergyProduction")
+
+    @model_validator(mode="after")
+    def _energy_consumed_meter(self) -> Self:
+        # Consumption is reported as measured or estimated; either one means energy data.
+        if self.has_energy_consumed_meter is None and (
+            self.has_measured_energy_consumption is not None or self.has_estimated_energy_consumption is not None
+        ):
+            self.has_energy_consumed_meter = bool(self.has_measured_energy_consumption) or bool(self.has_estimated_energy_consumption)
+        return self
+
+
+class ATWFrostProtection(FrostProtection):
+    """Frost protection for an ATW unit, which reports activity per zone."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    zone1_active: bool = Field(default=False, alias="zone1Active")
+    zone2_active: bool = Field(default=False, alias="zone2Active")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _active_from_zones(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "active" not in data:
+            return {**data, "active": bool(data.get("zone1Active")) or bool(data.get("zone2Active"))}
+        return data
 
 
 class ATWUnit(BaseModel):
@@ -150,7 +186,7 @@ class ATWUnit(BaseModel):
     settings: dict[str, Any] = Field(default_factory=dict, repr=False)
     rssi: int | None = None
     capabilities: ATWCapabilities | None = None
-    frost_protection: FrostProtection | None = None
+    frost_protection: ATWFrostProtection | None = None
     overheat_protection: OverheatProtection | None = None
     holiday_mode: HolidayMode | None = None
 
@@ -214,6 +250,12 @@ class ATWUnit(BaseModel):
             if _key in settings:
                 settings[_key] = _val
 
+        capabilities = ATWCapabilities.model_validate(data["capabilities"]) if data.get("capabilities") else None
+        if capabilities is not None and capabilities.has_cooling_mode is None:
+            capabilities.has_cooling_mode = _bool("HasCoolingMode")
+        # The HasZone2 setting is free text ("None", "0"); the capability is a real bool.
+        has_zone2 = capabilities.has_zone2 if capabilities is not None and capabilities.has_zone2 is not None else settings.get("HasZone2")
+
         return {
             "id": str(data["id"]),
             "name": data.get("givenDisplayName", ""),
@@ -223,7 +265,7 @@ class ATWUnit(BaseModel):
             "operation_mode_zone1": settings.get("OperationModeZone1"),
             "set_temperature_zone1": settings.get("SetTemperatureZone1"),
             "room_temperature_zone1": settings.get("RoomTemperatureZone1"),
-            "has_zone2": settings.get("HasZone2"),
+            "has_zone2": has_zone2,
             "operation_mode_zone2": settings.get("OperationModeZone2"),
             "set_temperature_zone2": settings.get("SetTemperatureZone2"),
             "room_temperature_zone2": settings.get("RoomTemperatureZone2"),
@@ -234,8 +276,8 @@ class ATWUnit(BaseModel):
             "raw_settings": raw_settings,
             "settings": settings,
             "rssi": data.get("rssi"),
-            "capabilities": ATWCapabilities.model_validate(data.get("capabilities")) if data.get("capabilities") else None,
-            "frost_protection": FrostProtection.model_validate(data["frostProtection"]) if data.get("frostProtection") else None,
+            "capabilities": capabilities,
+            "frost_protection": ATWFrostProtection.model_validate(data["frostProtection"]) if data.get("frostProtection") else None,
             "overheat_protection": OverheatProtection.model_validate(data["overheatProtection"]) if data.get("overheatProtection") else None,
             "holiday_mode": HolidayMode.model_validate(data["holidayMode"]) if data.get("holidayMode") else None,
         }
