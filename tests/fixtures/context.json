@@ -23,7 +23,7 @@
           "capabilities": {
             "isMultiSplitSystem": false,
             "isLegacyDevice": false,
-            "hasStandby": false,
+            "hasStandby": true,
             "hasCoolOperationMode": true,
             "hasHeatOperationMode": true,
             "hasAutoOperationMode": true,
@@ -34,19 +34,15 @@
             "hasExtendedTemperatureRange": true,
             "hasEnergyConsumedMeter": false,
             "numberOfFanSpeeds": 5,
-            "minTempCool": 16,
-            "maxTempCool": 31,
+            "minTempCoolDry": 16,
+            "maxTempCoolDry": 31,
             "minTempHeat": 10,
             "maxTempHeat": 31,
             "minTempAutomatic": 16,
             "maxTempAutomatic": 31,
             "hasDemandSideControl": false,
             "hasHalfDegreeIncrements": true,
-            "supportsWideVane": false,
-            "hasOutdoorTemperatureSensor": false,
-            "hasVaneVertical": true,
-            "hasVaneHorizontal": true,
-            "hasStandbyMode": false
+            "supportsWideVane": false
           },
           "frostProtection": {
             "active": false,
