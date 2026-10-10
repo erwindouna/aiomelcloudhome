@@ -199,7 +199,7 @@ async def test_get_actual_telemetry(aresponses: ResponsesMockServer, melcloudhom
 @pytest.mark.parametrize(
     ("status_code", "expected_exception", "expected_requests"),
     [
-        (401, MelCloudHomeAuthenticationError, 1),
+        (401, MelCloudHomeAuthenticationError, 2),
         (404, MelCloudHomeNotFoundError, 1),
         (500, MelCloudHomeConnectionError, _RETRY_ATTEMPTS),
     ],
@@ -211,7 +211,7 @@ async def test_client_exceptions(
     expected_exception: type,
     expected_requests: int,
 ) -> None:
-    """Test that client exceptions are raised for different status codes, retrying transient (5xx) ones."""
+    """Test that client exceptions are raised for different status codes, retrying transient (5xx) ones and a 401 once."""
     for _ in range(expected_requests):
         aresponses.add(
             "mobile.bff.melcloudhome.com",

@@ -1,5 +1,6 @@
 """Tests for Melcloud Home authentication."""
 
+import asyncio
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -344,3 +345,53 @@ async def test_client_passes_request_timeout_to_auth() -> None:
         client = MELCloudHome(username="u@example.com", password="pass", session=session, request_timeout=7.0)
         assert isinstance(client._auth, MelCloudHomeAuth)
         assert client._auth._timeout == aiohttp.ClientTimeout(total=7.0)
+
+
+async def test_store_tokens_keeps_refresh_token_when_omitted(auth: MelCloudHomeAuth) -> None:
+    """A token response without a refresh_token keeps the previous one."""
+    auth._refresh_token = "old_refresh"
+    auth._store_tokens({"access_token": "new_access", "expires_in": 3600})
+    assert auth._access_token == "new_access"
+    assert auth._refresh_token == "old_refresh"
+
+
+async def test_refresh_keeps_refresh_token_when_omitted() -> None:
+    """A refresh response without a new refresh_token keeps the previous one for the next refresh."""
+    async with aiohttp.ClientSession() as session:
+        auth = MelCloudHomeAuth(username="u@example.com", password="pass", session=session)
+        auth._refresh_token = "old_refresh"
+        token_data: dict[str, object] = {"access_token": "new_access", "expires_in": 3600}
+        with patch.object(session, "post", return_value=_make_cm(200, json_data=token_data)):
+            await auth.refresh()
+        assert auth.access_token == "new_access"
+        assert auth._refresh_token == "old_refresh"
+
+
+async def test_concurrent_token_requests_refresh_once(auth: MelCloudHomeAuth) -> None:
+    """Concurrent callers with an expired token trigger a single refresh."""
+    auth._access_token = "expired"
+    auth._token_expiry = 0.0
+
+    async def _refresh(self: MelCloudHomeAuth) -> None:
+        await asyncio.sleep(0)
+        self._store_tokens({"access_token": "fresh", "refresh_token": "r", "expires_in": 3600})
+
+    with patch.object(MelCloudHomeAuth, "refresh", autospec=True, side_effect=_refresh) as mock_refresh:
+        tokens = await asyncio.gather(auth.async_get_access_token(), auth.async_get_access_token())
+
+    assert tokens == ["fresh", "fresh"]
+    mock_refresh.assert_called_once()
+
+
+async def test_invalidate_access_token(auth: MelCloudHomeAuth) -> None:
+    """Invalidating the current token expires it; a stale token leaves the current one alone."""
+    auth._access_token = "current"
+    auth._refresh_token = "refresh"
+    auth._token_expiry = time.monotonic() + 3600
+
+    assert auth.invalidate_access_token("stale") is True
+    assert auth.is_token_valid
+
+    assert auth.invalidate_access_token("current") is True
+    assert not auth.is_token_valid
+    assert auth._refresh_token == "refresh"

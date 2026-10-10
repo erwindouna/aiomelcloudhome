@@ -91,8 +91,28 @@ class MELCloudHome:
         json: dict[str, Any] | None = None,
         timeout: float | None = None,
     ) -> Any:
-        """Make an authenticated API request, retrying transient network failures."""
+        """Make an authenticated API request; on a 401, renew the token and retry once."""
         token = await self._auth.async_get_access_token()
+        try:
+            return await self._send(uri, token, method=method, params=params, json=json, timeout=timeout)
+        except MelCloudHomeAuthenticationError:
+            if not self._auth.invalidate_access_token(token):
+                raise
+        _LOGGER.debug("Access token rejected for %s %s, renewing it and retrying once", method, uri)
+        token = await self._auth.async_get_access_token()
+        return await self._send(uri, token, method=method, params=params, json=json, timeout=timeout)
+
+    async def _send(  # pylint: disable=too-many-arguments
+        self,
+        uri: str,
+        token: str,
+        *,
+        method: str,
+        params: dict[str, str] | None,
+        json: dict[str, Any] | None,
+        timeout: float | None,
+    ) -> Any:
+        """Send one request with ``token``, retrying transient network failures."""
         url = URL(self._api_base) / uri.lstrip("/")
         headers = {
             "Authorization": f"Bearer {token}",

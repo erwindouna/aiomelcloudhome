@@ -1,5 +1,6 @@
 """OAuth 2.0 PKCE authentication for Melcloud Home."""
 
+import asyncio
 import base64
 import hashlib
 import re
@@ -30,6 +31,15 @@ class AbstractAuth(ABC):
     @abstractmethod
     async def close(self) -> None:
         """Close resources owned by the auth implementation."""
+
+    def invalidate_access_token(self, access_token: str) -> bool:
+        """Mark ``access_token`` as rejected by the API.
+
+        Return True when the next ``async_get_access_token`` call can return a new token,
+        so the rejected request is worth retrying once.
+        """
+        del access_token
+        return False
 
 
 class StaticTokenAuth(AbstractAuth):
@@ -66,10 +76,11 @@ def _response_error(err: ClientResponseError, message: str) -> MelCloudHomeError
     return MelCloudHomeAuthenticationError(message)
 
 
-def _parse_token_response(token_data: dict[str, object]) -> tuple[str, str, float]:
-    """Parse a token endpoint response into (access_token, refresh_token, expiry)."""
+def _parse_token_response(token_data: dict[str, object]) -> tuple[str, str | None, float]:
+    """Parse a token endpoint response into (access_token, refresh_token, expiry); refresh_token is None when omitted."""
     access_token = str(token_data.get("access_token", ""))
-    refresh_token = str(token_data.get("refresh_token", ""))
+    raw_refresh = token_data.get("refresh_token")
+    refresh_token = str(raw_refresh) if raw_refresh else None
     raw_expires = token_data.get("expires_in", 3600)
     expires_in = int(raw_expires) if isinstance(raw_expires, (int, float, str, bytes, bytearray)) else 3600
     return access_token, refresh_token, time.monotonic() + expires_in
@@ -92,6 +103,7 @@ class MelCloudHomeAuth(AbstractAuth):
         self._access_token: str | None = None
         self._refresh_token: str | None = None
         self._token_expiry: float = 0.0
+        self._token_lock = asyncio.Lock()
 
     @property
     def access_token(self) -> str | None:
@@ -285,13 +297,25 @@ class MelCloudHomeAuth(AbstractAuth):
         self._store_tokens(token_data)
 
     def _store_tokens(self, token_data: dict[str, object]) -> None:
-        """Store tokens and compute expiry time."""
-        self._access_token, self._refresh_token, self._token_expiry = _parse_token_response(token_data)
+        """Store tokens and compute expiry time; keep the refresh token when the response omits it."""
+        self._access_token, refresh_token, self._token_expiry = _parse_token_response(token_data)
+        if refresh_token:
+            self._refresh_token = refresh_token
 
     async def ensure_valid_token(self) -> None:
         """Ensure we have a valid token, refreshing or re-authenticating as needed."""
-        if not self.is_token_valid:
-            await self.refresh()
+        if self.is_token_valid:
+            return
+        async with self._token_lock:
+            # Another caller may have refreshed while we waited for the lock.
+            if not self.is_token_valid:
+                await self.refresh()
+
+    def invalidate_access_token(self, access_token: str) -> bool:
+        """Expire ``access_token`` so the next call refreshes it; the refresh token is kept."""
+        if access_token == self._access_token:
+            self._token_expiry = 0.0
+        return True
 
     async def async_get_access_token(self) -> str:
         """Return a valid access token, refreshing or re-authenticating as needed."""
