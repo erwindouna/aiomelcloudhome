@@ -73,7 +73,7 @@ class MELCloudHome:
         if auth is not None:
             self._auth = auth
         elif username and password:
-            self._auth = MelCloudHomeAuth(username, password, session=self._session)
+            self._auth = MelCloudHomeAuth(username, password, session=self._session, request_timeout=request_timeout)
         elif access_token:
             self._auth = StaticTokenAuth(access_token)
         else:

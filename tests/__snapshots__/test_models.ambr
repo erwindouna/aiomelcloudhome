@@ -72,7 +72,7 @@
   ATAUnit(id='minimal-unit', name='Minimal AC', power=False, operation_mode=None, set_temperature=None, room_temperature=None, set_fan_speed=None, actual_fan_speed=None, vane_vertical_direction=None, vane_horizontal_direction=None, in_standby_mode=None, is_in_error=None, rssi=None, capabilities=None, frost_protection=None, overheat_protection=None, holiday_mode=None)
 # ---
 # name: test_atw_unit_capabilities
-  ATWUnit(id='atw-unit-uuid-1', name='Heat Pump', power=True, in_standby_mode=False, operation_mode=<ATWOperationMode.HEAT_ZONES: 'HeatZones'>, operation_mode_zone1=<ATWZoneMode.HEAT_ROOM_TEMPERATURE: 'HeatRoomTemperature'>, set_temperature_zone1=21.0, room_temperature_zone1=20.0, has_zone2=False, operation_mode_zone2=None, set_temperature_zone2=None, room_temperature_zone2=None, set_tank_water_temperature=50.0, tank_water_temperature=48.0, forced_hot_water_mode=False, is_in_error=False, rssi=-52, capabilities=ATWCapabilities(has_hot_water=True, has_zone2=False, has_half_degrees=False, has_cooling_mode=False, min_set_tank_temperature=40.0, max_set_tank_temperature=60.0, min_set_temperature_zone1=None, max_set_temperature_zone1=None, min_set_temperature_zone2=None, max_set_temperature_zone2=None, has_standby_mode=False, has_energy_consumed_meter=True), frost_protection=FrostProtection(active=False, enabled=True, min=5.0, max=8.0), overheat_protection=OverheatProtection(active=False, enabled=False, min=0.0, max=0.0), holiday_mode=None)
+  ATWUnit(id='atw-unit-uuid-1', name='Heat Pump', power=True, in_standby_mode=False, operation_mode=<ATWOperationMode.STOP: 'Stop'>, operation_mode_zone1=<ATWZoneMode.HEAT_ROOM_TEMPERATURE: 'HeatRoomTemperature'>, set_temperature_zone1=21.0, room_temperature_zone1=20.0, has_zone2=False, operation_mode_zone2=None, set_temperature_zone2=None, room_temperature_zone2=None, set_tank_water_temperature=50.0, tank_water_temperature=48.0, forced_hot_water_mode=False, is_in_error=False, rssi=-52, capabilities=ATWCapabilities(has_hot_water=True, has_zone2=False, has_half_degrees=False, has_cooling_mode=False, min_set_tank_temperature=40.0, max_set_tank_temperature=60.0, min_set_temperature_zone1=10.0, max_set_temperature_zone1=30.0, min_set_temperature_zone2=10.0, max_set_temperature_zone2=30.0, has_standby_mode=None, has_energy_consumed_meter=True, has_measured_energy_consumption=False, has_estimated_energy_consumption=True, has_measured_energy_production=False, has_estimated_energy_production=True), frost_protection=ATWFrostProtection(active=False, enabled=True, min=5.0, max=8.0, zone1_active=False, zone2_active=False), overheat_protection=None, holiday_mode=None)
 # ---
 # name: test_atw_unit_exports_settings
   dict({
@@ -82,54 +82,74 @@
         'value': 'True',
       }),
       dict({
+        'name': 'InStandbyMode',
+        'value': 'False',
+      }),
+      dict({
         'name': 'OperationMode',
-        'value': 'HeatZones',
+        'value': 'Stop',
+      }),
+      dict({
+        'name': 'HasZone2',
+        'value': 'None',
       }),
       dict({
         'name': 'OperationModeZone1',
         'value': 'HeatRoomTemperature',
       }),
       dict({
-        'name': 'SetTemperatureZone1',
-        'value': '21',
-      }),
-      dict({
         'name': 'RoomTemperatureZone1',
         'value': '20',
       }),
       dict({
-        'name': 'SetTankWaterTemperature',
-        'value': '50',
+        'name': 'SetTemperatureZone1',
+        'value': '21',
+      }),
+      dict({
+        'name': 'ProhibitHotWater',
+        'value': 'False',
       }),
       dict({
         'name': 'TankWaterTemperature',
         'value': '48',
       }),
       dict({
-        'name': 'ForcedHotWaterMode',
+        'name': 'SetTankWaterTemperature',
+        'value': '50',
+      }),
+      dict({
+        'name': 'HasCoolingMode',
         'value': 'False',
       }),
       dict({
-        'name': 'HasZone2',
-        'value': '0',
-      }),
-      dict({
-        'name': 'InStandbyMode',
+        'name': 'ForcedHotWaterMode',
         'value': 'False',
       }),
       dict({
         'name': 'IsInError',
         'value': 'False',
       }),
+      dict({
+        'name': 'ErrorCode',
+        'value': '',
+      }),
+      dict({
+        'name': 'OutdoorTemperature',
+        'value': '12',
+      }),
     ]),
     'settings': dict({
+      'ErrorCode': '',
       'ForcedHotWaterMode': False,
+      'HasCoolingMode': 'False',
       'HasZone2': False,
       'InStandbyMode': False,
       'IsInError': False,
-      'OperationMode': <ATWOperationMode.HEAT_ZONES: 'HeatZones'>,
+      'OperationMode': <ATWOperationMode.STOP: 'Stop'>,
       'OperationModeZone1': <ATWZoneMode.HEAT_ROOM_TEMPERATURE: 'HeatRoomTemperature'>,
+      'OutdoorTemperature': '12',
       'Power': True,
+      'ProhibitHotWater': 'False',
       'RoomTemperatureZone1': '20',
       'SetTankWaterTemperature': '50',
       'SetTemperatureZone1': '21',
@@ -138,13 +158,13 @@
   })
 # ---
 # name: test_atw_unit_from_api
-  ATWUnit(id='atw-unit-uuid-1', name='Heat Pump', power=True, in_standby_mode=False, operation_mode=<ATWOperationMode.HEAT_ZONES: 'HeatZones'>, operation_mode_zone1=<ATWZoneMode.HEAT_ROOM_TEMPERATURE: 'HeatRoomTemperature'>, set_temperature_zone1=21.0, room_temperature_zone1=20.0, has_zone2=False, operation_mode_zone2=None, set_temperature_zone2=None, room_temperature_zone2=None, set_tank_water_temperature=50.0, tank_water_temperature=48.0, forced_hot_water_mode=False, is_in_error=False, rssi=-52, capabilities=ATWCapabilities(has_hot_water=True, has_zone2=False, has_half_degrees=False, has_cooling_mode=False, min_set_tank_temperature=40.0, max_set_tank_temperature=60.0, min_set_temperature_zone1=None, max_set_temperature_zone1=None, min_set_temperature_zone2=None, max_set_temperature_zone2=None, has_standby_mode=False, has_energy_consumed_meter=True), frost_protection=FrostProtection(active=False, enabled=True, min=5.0, max=8.0), overheat_protection=OverheatProtection(active=False, enabled=False, min=0.0, max=0.0), holiday_mode=None)
+  ATWUnit(id='atw-unit-uuid-1', name='Heat Pump', power=True, in_standby_mode=False, operation_mode=<ATWOperationMode.STOP: 'Stop'>, operation_mode_zone1=<ATWZoneMode.HEAT_ROOM_TEMPERATURE: 'HeatRoomTemperature'>, set_temperature_zone1=21.0, room_temperature_zone1=20.0, has_zone2=False, operation_mode_zone2=None, set_temperature_zone2=None, room_temperature_zone2=None, set_tank_water_temperature=50.0, tank_water_temperature=48.0, forced_hot_water_mode=False, is_in_error=False, rssi=-52, capabilities=ATWCapabilities(has_hot_water=True, has_zone2=False, has_half_degrees=False, has_cooling_mode=False, min_set_tank_temperature=40.0, max_set_tank_temperature=60.0, min_set_temperature_zone1=10.0, max_set_temperature_zone1=30.0, min_set_temperature_zone2=10.0, max_set_temperature_zone2=30.0, has_standby_mode=None, has_energy_consumed_meter=True, has_measured_energy_consumption=False, has_estimated_energy_consumption=True, has_measured_energy_production=False, has_estimated_energy_production=True), frost_protection=ATWFrostProtection(active=False, enabled=True, min=5.0, max=8.0, zone1_active=False, zone2_active=False), overheat_protection=None, holiday_mode=None)
 # ---
 # name: test_building_from_api
   Building(id='test-building', name='Test Building', air_to_air_units=[], air_to_water_units=[])
 # ---
 # name: test_user_context_from_api
-  UserContext(id='user-uuid-1', first_name='First', last_name='Last', email='user@example.com', number_of_devices_allowed=10, number_of_buildings_allowed=2, number_of_guests_allowed_per_unit=5, number_of_guest_devices_allowed=10, buildings=[Building(id='building-uuid-1', name='My Home', air_to_air_units=[ATAUnit(id='ata-unit-uuid-1', name='Living Room AC', power=True, operation_mode=<ATAOperationMode.HEAT: 'Heat'>, set_temperature=21.0, room_temperature=20.0, set_fan_speed=<ATAFanSpeed.AUTO: 'Auto'>, actual_fan_speed=<ATAFanSpeed.OFF: 'Off'>, vane_vertical_direction=<ATAVaneVertical.AUTO: 'Auto'>, vane_horizontal_direction=<ATAVaneHorizontal.CENTRE: 'Centre'>, in_standby_mode=False, is_in_error=False, rssi=-45, capabilities=ATACapabilities(number_of_fan_speeds=5, min_temp_heat=10.0, max_temp_heat=31.0, min_temp_cool=16.0, max_temp_cool=31.0, min_temp_auto=16.0, max_temp_auto=31.0, has_half_degree_increments=True, has_cool_operation_mode=True, has_dry_operation_mode=True, has_fan_operation_mode=None, has_auto_operation_mode=True, has_outdoor_temperature_sensor=None, has_energy_consumed_meter=False, has_vane_vertical=True, has_vane_horizontal=True, has_standby_mode=True, has_heat_operation_mode=True, has_automatic_fan_speed=True, has_air_direction=True, has_swing=True, supports_wide_vane=False, has_extended_temperature_range=True, has_demand_side_control=False, is_multi_split_system=False, is_legacy_device=False), frost_protection=FrostProtection(active=False, enabled=True, min=10.0, max=12.0), overheat_protection=OverheatProtection(active=False, enabled=True, min=35.0, max=37.0), holiday_mode=HolidayMode(active=False, enabled=True, start_date=datetime.datetime(2026, 6, 21, 21, 47, 28, 229000), end_date=datetime.datetime(2026, 6, 25, 17, 0)))], air_to_water_units=[ATWUnit(id='atw-unit-uuid-1', name='Heat Pump', power=True, in_standby_mode=False, operation_mode=<ATWOperationMode.HEAT_ZONES: 'HeatZones'>, operation_mode_zone1=<ATWZoneMode.HEAT_ROOM_TEMPERATURE: 'HeatRoomTemperature'>, set_temperature_zone1=21.0, room_temperature_zone1=20.0, has_zone2=False, operation_mode_zone2=None, set_temperature_zone2=None, room_temperature_zone2=None, set_tank_water_temperature=50.0, tank_water_temperature=48.0, forced_hot_water_mode=False, is_in_error=False, rssi=-52, capabilities=ATWCapabilities(has_hot_water=True, has_zone2=False, has_half_degrees=False, has_cooling_mode=False, min_set_tank_temperature=40.0, max_set_tank_temperature=60.0, min_set_temperature_zone1=None, max_set_temperature_zone1=None, min_set_temperature_zone2=None, max_set_temperature_zone2=None, has_standby_mode=False, has_energy_consumed_meter=True), frost_protection=FrostProtection(active=False, enabled=True, min=5.0, max=8.0), overheat_protection=OverheatProtection(active=False, enabled=False, min=0.0, max=0.0), holiday_mode=None)])])
+  UserContext(id='user-uuid-1', first_name='First', last_name='Last', email='user@example.com', number_of_devices_allowed=10, number_of_buildings_allowed=2, number_of_guests_allowed_per_unit=5, number_of_guest_devices_allowed=10, buildings=[Building(id='building-uuid-1', name='My Home', air_to_air_units=[ATAUnit(id='ata-unit-uuid-1', name='Living Room AC', power=True, operation_mode=<ATAOperationMode.HEAT: 'Heat'>, set_temperature=21.0, room_temperature=20.0, set_fan_speed=<ATAFanSpeed.AUTO: 'Auto'>, actual_fan_speed=<ATAFanSpeed.OFF: 'Off'>, vane_vertical_direction=<ATAVaneVertical.AUTO: 'Auto'>, vane_horizontal_direction=<ATAVaneHorizontal.CENTRE: 'Centre'>, in_standby_mode=False, is_in_error=False, rssi=-45, capabilities=ATACapabilities(number_of_fan_speeds=5, min_temp_heat=10.0, max_temp_heat=31.0, min_temp_cool=16.0, max_temp_cool=31.0, min_temp_auto=16.0, max_temp_auto=31.0, has_half_degree_increments=True, has_cool_operation_mode=True, has_dry_operation_mode=True, has_fan_operation_mode=None, has_auto_operation_mode=True, has_outdoor_temperature_sensor=None, has_energy_consumed_meter=False, has_vane_vertical=True, has_vane_horizontal=True, has_standby_mode=True, has_heat_operation_mode=True, has_automatic_fan_speed=True, has_air_direction=True, has_swing=True, supports_wide_vane=False, has_extended_temperature_range=True, has_demand_side_control=False, is_multi_split_system=False, is_legacy_device=False), frost_protection=FrostProtection(active=False, enabled=True, min=10.0, max=12.0), overheat_protection=OverheatProtection(active=False, enabled=True, min=35.0, max=37.0), holiday_mode=HolidayMode(active=False, enabled=True, start_date=datetime.datetime(2026, 6, 21, 21, 47, 28, 229000), end_date=datetime.datetime(2026, 6, 25, 17, 0)))], air_to_water_units=[ATWUnit(id='atw-unit-uuid-1', name='Heat Pump', power=True, in_standby_mode=False, operation_mode=<ATWOperationMode.STOP: 'Stop'>, operation_mode_zone1=<ATWZoneMode.HEAT_ROOM_TEMPERATURE: 'HeatRoomTemperature'>, set_temperature_zone1=21.0, room_temperature_zone1=20.0, has_zone2=False, operation_mode_zone2=None, set_temperature_zone2=None, room_temperature_zone2=None, set_tank_water_temperature=50.0, tank_water_temperature=48.0, forced_hot_water_mode=False, is_in_error=False, rssi=-52, capabilities=ATWCapabilities(has_hot_water=True, has_zone2=False, has_half_degrees=False, has_cooling_mode=False, min_set_tank_temperature=40.0, max_set_tank_temperature=60.0, min_set_temperature_zone1=10.0, max_set_temperature_zone1=30.0, min_set_temperature_zone2=10.0, max_set_temperature_zone2=30.0, has_standby_mode=None, has_energy_consumed_meter=True, has_measured_energy_consumption=False, has_estimated_energy_consumption=True, has_measured_energy_production=False, has_estimated_energy_production=True), frost_protection=ATWFrostProtection(active=False, enabled=True, min=5.0, max=8.0, zone1_active=False, zone2_active=False), overheat_protection=None, holiday_mode=None)])])
 # ---
 # name: test_user_context_guest_buildings
   UserContext(id=None, first_name=None, last_name=None, email=None, number_of_devices_allowed=None, number_of_buildings_allowed=None, number_of_guests_allowed_per_unit=None, number_of_guest_devices_allowed=None, buildings=[Building(id='guest-building-1', name='Guest Home', air_to_air_units=[], air_to_water_units=[])])

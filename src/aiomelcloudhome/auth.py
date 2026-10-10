@@ -8,9 +8,9 @@ import time
 from abc import ABC, abstractmethod
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
-from aiohttp import ClientResponseError, ClientSession, NonHttpUrlRedirectClientError
+from aiohttp import ClientError, ClientResponseError, ClientSession, ClientTimeout, NonHttpUrlRedirectClientError
 
-from .exceptions import MelCloudHomeAuthenticationError
+from .exceptions import MelCloudHomeAuthenticationError, MelCloudHomeConnectionError, MelCloudHomeError, MelCloudHomeTimeoutError
 
 _AUTH_BASE = "https://auth.melcloudhome.com"
 _COGNITO_DOMAIN = "live-melcloudhome.auth.eu-west-1.amazoncognito.com"
@@ -54,6 +54,18 @@ def _generate_pkce_pair() -> tuple[str, str]:
     return verifier, challenge
 
 
+def _is_transient(status: int) -> bool:
+    """Return True for statuses that mean the server is unavailable, not that credentials are wrong."""
+    return status == 429 or status >= 500
+
+
+def _response_error(err: ClientResponseError, message: str) -> MelCloudHomeError:
+    """Classify an HTTP error from the auth flow."""
+    if _is_transient(err.status):
+        return MelCloudHomeConnectionError(f"{message}: HTTP {err.status}")
+    return MelCloudHomeAuthenticationError(message)
+
+
 def _parse_token_response(token_data: dict[str, object]) -> tuple[str, str, float]:
     """Parse a token endpoint response into (access_token, refresh_token, expiry)."""
     access_token = str(token_data.get("access_token", ""))
@@ -66,10 +78,11 @@ def _parse_token_response(token_data: dict[str, object]) -> tuple[str, str, floa
 class MelCloudHomeAuth(AbstractAuth):
     """Standalone OAuth 2.0 PKCE authentication using username and password."""
 
-    def __init__(self, username: str, password: str, session: ClientSession | None = None) -> None:
+    def __init__(self, username: str, password: str, session: ClientSession | None = None, request_timeout: float = 10.0) -> None:
         """Initialize MelCloudHomeAuth."""
         self.username = username
         self.password = password
+        self._timeout = ClientTimeout(total=request_timeout)
         self._close_session = False
         if session is not None:
             self.session = session
@@ -90,8 +103,17 @@ class MelCloudHomeAuth(AbstractAuth):
         """Return True if the access token is still valid."""
         return bool(self._access_token) and time.monotonic() < self._token_expiry - _TOKEN_REFRESH_BUFFER
 
-    async def authenticate(self) -> None:  # pylint: disable=too-many-locals
+    async def authenticate(self) -> None:
         """Perform the full OAuth 2.0 PKCE authentication flow."""
+        try:
+            await self._authenticate()
+        except TimeoutError as err:
+            raise MelCloudHomeTimeoutError("Timeout while authenticating") from err
+        except ClientError as err:
+            raise MelCloudHomeConnectionError(f"Error while authenticating: {err}") from err
+
+    async def _authenticate(self) -> None:  # pylint: disable=too-many-locals
+        """Run the PKCE flow; transport errors are mapped by ``authenticate``."""
         verifier, challenge = _generate_pkce_pair()
         state = secrets.token_urlsafe(16)
 
@@ -108,16 +130,21 @@ class MelCloudHomeAuth(AbstractAuth):
                     "code_challenge_method": "S256",
                 },
                 allow_redirects=False,
+                timeout=self._timeout,
             ) as resp:
                 resp.raise_for_status()
                 par_data = await resp.json(content_type=None)
                 request_uri = par_data["request_uri"]
-        except (ClientResponseError, KeyError) as err:
-            raise MelCloudHomeAuthenticationError("PAR request failed") from err
+        except ClientResponseError as err:
+            raise _response_error(err, "PAR request failed") from err
+        except (KeyError, TypeError, ValueError) as err:
+            raise MelCloudHomeConnectionError("Unexpected PAR response") from err
 
         auth_url = f"{_AUTH_BASE}/connect/authorize?" + urlencode({"client_id": _CLIENT_ID, "request_uri": request_uri})
         try:
-            async with self.session.get(auth_url, allow_redirects=True) as resp:
+            async with self.session.get(auth_url, allow_redirects=True, timeout=self._timeout) as resp:
+                if _is_transient(resp.status):
+                    raise MelCloudHomeConnectionError(f"Login page unavailable: HTTP {resp.status}")
                 cognito_url = str(resp.url)
                 cognito_html = await resp.text()
         except NonHttpUrlRedirectClientError as err:
@@ -128,11 +155,26 @@ class MelCloudHomeAuth(AbstractAuth):
             await self._exchange_code(auth_code, verifier)
             return
         except ClientResponseError as err:
-            raise MelCloudHomeAuthenticationError("Authorization redirect failed") from err
+            raise _response_error(err, "Authorization redirect failed") from err
 
+        login_url, callback_location = await self._submit_credentials(cognito_url, cognito_html)
+        callback_location = await self._follow_redirects(callback_location, login_url)
+
+        callback_parsed = urlparse(callback_location)
+        callback_params = parse_qs(callback_parsed.query)
+
+        auth_code = (callback_params.get("code") or [""])[0]
+        if not auth_code:
+            raise MelCloudHomeAuthenticationError("No authorization code in callback")
+
+        await self._exchange_code(auth_code, verifier)
+
+    async def _submit_credentials(self, cognito_url: str, cognito_html: str) -> tuple[str, str]:
+        """Post the credentials to the Cognito login form; return (login_url, callback_location)."""
         csrf_match = re.search(r'name="_csrf"\s+value="([^"]+)"', cognito_html)
         if not csrf_match:
-            raise MelCloudHomeAuthenticationError("Could not extract CSRF token from Cognito login page")
+            # Not the login form (e.g. a maintenance page); nothing says the credentials are wrong.
+            raise MelCloudHomeConnectionError("Could not extract CSRF token from Cognito login page")
         csrf_token = csrf_match.group(1)
 
         parsed = urlparse(cognito_url)
@@ -148,24 +190,17 @@ class MelCloudHomeAuth(AbstractAuth):
                 },
                 params=parse_qs(parsed.query),
                 allow_redirects=False,
+                timeout=self._timeout,
             ) as resp:
+                if _is_transient(resp.status):
+                    raise MelCloudHomeConnectionError(f"Cognito credential submission failed: HTTP {resp.status}")
                 if resp.status not in (301, 302):
                     raise MelCloudHomeAuthenticationError("Cognito credential submission did not redirect; check username/password")
                 raw_location = resp.headers.get("Location", "")
                 callback_location = urljoin(login_url, raw_location) if raw_location else ""
         except ClientResponseError as err:
-            raise MelCloudHomeAuthenticationError("Credential submission failed") from err
-
-        callback_location = await self._follow_redirects(callback_location, login_url)
-
-        callback_parsed = urlparse(callback_location)
-        callback_params = parse_qs(callback_parsed.query)
-
-        auth_code = (callback_params.get("code") or [""])[0]
-        if not auth_code:
-            raise MelCloudHomeAuthenticationError("No authorization code in callback")
-
-        await self._exchange_code(auth_code, verifier)
+            raise _response_error(err, "Credential submission failed") from err
+        return login_url, callback_location
 
     async def _follow_redirects(self, start_location: str, base: str) -> str:
         """Follow redirects until reaching the app callback URI."""
@@ -176,7 +211,7 @@ class MelCloudHomeAuth(AbstractAuth):
             if not location.startswith("http"):
                 location = urljoin(base, location)
             try:
-                async with self.session.get(location, allow_redirects=False) as resp:
+                async with self.session.get(location, allow_redirects=False, timeout=self._timeout) as resp:
                     base = location
                     raw_next = resp.headers.get("Location", "")
                     if raw_next:
@@ -186,7 +221,7 @@ class MelCloudHomeAuth(AbstractAuth):
                         redirect_uri = (loc_params.get("RedirectUri") or [""])[0]
                         location = urljoin(base, redirect_uri) if redirect_uri else ""
             except ClientResponseError as err:
-                raise MelCloudHomeAuthenticationError("Callback follow failed") from err
+                raise _response_error(err, "Callback follow failed") from err
         return location
 
     async def _exchange_code(self, code: str, verifier: str) -> None:
@@ -201,16 +236,28 @@ class MelCloudHomeAuth(AbstractAuth):
                     "redirect_uri": _REDIRECT_URI,
                     "code_verifier": verifier,
                 },
+                timeout=self._timeout,
             ) as resp:
                 resp.raise_for_status()
                 token_data = await resp.json(content_type=None)
         except ClientResponseError as err:
-            raise MelCloudHomeAuthenticationError("Token exchange failed") from err
+            raise _response_error(err, "Token exchange failed") from err
+        except ValueError as err:
+            raise MelCloudHomeConnectionError("Unexpected token response") from err
 
         self._store_tokens(token_data)
 
     async def refresh(self) -> None:
         """Refresh the access token using the stored refresh token."""
+        try:
+            await self._refresh()
+        except TimeoutError as err:
+            raise MelCloudHomeTimeoutError("Timeout while refreshing the token") from err
+        except ClientError as err:
+            raise MelCloudHomeConnectionError(f"Error while refreshing the token: {err}") from err
+
+    async def _refresh(self) -> None:
+        """Refresh the token; transport errors are mapped by ``refresh``."""
         if not self._refresh_token:
             await self.authenticate()
             return
@@ -223,6 +270,7 @@ class MelCloudHomeAuth(AbstractAuth):
                     "client_id": _CLIENT_ID,
                     "refresh_token": self._refresh_token,
                 },
+                timeout=self._timeout,
             ) as resp:
                 resp.raise_for_status()
                 token_data = await resp.json(content_type=None)
@@ -230,7 +278,9 @@ class MelCloudHomeAuth(AbstractAuth):
             if err.status == 400:
                 await self.authenticate()
                 return
-            raise MelCloudHomeAuthenticationError("Token refresh failed") from err
+            raise _response_error(err, "Token refresh failed") from err
+        except ValueError as err:
+            raise MelCloudHomeConnectionError("Unexpected token response") from err
 
         self._store_tokens(token_data)
 

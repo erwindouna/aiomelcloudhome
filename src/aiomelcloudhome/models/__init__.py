@@ -12,7 +12,7 @@ from .ata import (
     HolidayMode,
     OverheatProtection,
 )
-from .atw import ATWCapabilities, ATWOperationMode, ATWUnit, ATWUnitControl, ATWZoneMode
+from .atw import ATWCapabilities, ATWFrostProtection, ATWOperationMode, ATWUnit, ATWUnitControl, ATWZoneMode
 from .context import Building, UserContext
 
 __all__ = [
@@ -24,6 +24,7 @@ __all__ = [
     "ATAVaneHorizontal",
     "ATAVaneVertical",
     "ATWCapabilities",
+    "ATWFrostProtection",
     "ATWOperationMode",
     "ATWUnit",
     "ATWUnitControl",

@@ -3,12 +3,9 @@
 import re
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Self, TypeVar
+from typing import Any, Self
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
-
-_T = TypeVar("_T", bound=StrEnum)
-_UnitT = TypeVar("_UnitT", bound=BaseModel)
 
 _CAMEL_TO_SNAKE = re.compile(r"(?<!^)(?=[A-Z])")
 
@@ -126,7 +123,7 @@ def _coerce_float_value(value: Any) -> float | None:
         return None
 
 
-def _decode_enum_value(enum_cls: type[_T], code_map: dict[int, _T], value: Any) -> _T | None:  # noqa: UP047  # PEP 695 syntax needs Python 3.12; library targets 3.11
+def _decode_enum_value[T: StrEnum](enum_cls: type[T], code_map: dict[int, T], value: Any) -> T | None:
     """Decode a setting value that may arrive as an integer code (WebSocket) or a name (REST)."""
     if value is None or isinstance(value, bool):
         return None
@@ -154,7 +151,7 @@ def decode_ata_setting(name: str, value: Any) -> Any:
     return value
 
 
-def _apply_unit_changes(unit: _UnitT, settings: dict[str, Any], changes: dict[str, Any]) -> _UnitT:  # noqa: UP047
+def _apply_unit_changes[UnitT: BaseModel](unit: UnitT, settings: dict[str, Any], changes: dict[str, Any]) -> UnitT:
     """Return a copy of ``unit`` with decoded realtime changes applied, or ``unit`` itself if none apply."""
     applied = {name: value for name, value in changes.items() if value is not None}
     if not applied:
