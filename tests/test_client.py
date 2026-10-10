@@ -459,3 +459,65 @@ def test_atw_unit_rssi_none_string() -> None:
     }
     unit = ATWUnit.model_validate(raw)
     assert unit.rssi is None
+
+
+async def test_request_renews_token_and_retries_once_on_401(aresponses: ResponsesMockServer) -> None:
+    """A 401 from the API renews the access token and retries the request once."""
+    aresponses.add("mobile.bff.melcloudhome.com", "/context", "GET", aresponses.Response(status=401, text="Unauthorized"))
+    aresponses.add(
+        "mobile.bff.melcloudhome.com",
+        "/context",
+        "GET",
+        aresponses.Response(status=200, text=json.dumps({"buildings": [], "guestBuildings": []}), headers={"Content-Type": "application/json"}),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        auth = MelCloudHomeAuth(username="u", password="p", session=session)
+        auth._store_tokens({"access_token": "old", "refresh_token": "refresh", "expires_in": 3600})
+
+        async def _refresh(self: MelCloudHomeAuth) -> None:
+            self._store_tokens({"access_token": "new", "expires_in": 3600})
+
+        with (
+            patch.object(MelCloudHomeAuth, "refresh", autospec=True, side_effect=_refresh) as mock_refresh,
+            patch.object(session, "request", wraps=session.request) as mock_request,
+        ):
+            client = MELCloudHome(auth=auth, session=session)
+            ctx = await client.get_context()
+
+    assert ctx.buildings == []
+    assert [call.kwargs["headers"]["Authorization"] for call in mock_request.call_args_list] == ["Bearer old", "Bearer new"]
+    mock_refresh.assert_called_once()
+    aresponses.assert_plan_strictly_followed()
+
+
+async def test_request_raises_after_second_401(aresponses: ResponsesMockServer) -> None:
+    """A second 401 after renewing the token raises the authentication error."""
+    for _ in range(2):
+        aresponses.add("mobile.bff.melcloudhome.com", "/context", "GET", aresponses.Response(status=401, text="Unauthorized"))
+
+    async with aiohttp.ClientSession() as session:
+        auth = MelCloudHomeAuth(username="u", password="p", session=session)
+        auth._store_tokens({"access_token": "old", "refresh_token": "refresh", "expires_in": 3600})
+
+        async def _refresh(self: MelCloudHomeAuth) -> None:
+            self._store_tokens({"access_token": "new", "expires_in": 3600})
+
+        with patch.object(MelCloudHomeAuth, "refresh", autospec=True, side_effect=_refresh):
+            client = MELCloudHome(auth=auth, session=session)
+            with pytest.raises(MelCloudHomeAuthenticationError):
+                await client.get_context()
+
+    aresponses.assert_plan_strictly_followed()
+
+
+async def test_request_static_token_401_not_retried(aresponses: ResponsesMockServer) -> None:
+    """An auth that cannot renew its token is not retried on a 401."""
+    aresponses.add("mobile.bff.melcloudhome.com", "/context", "GET", aresponses.Response(status=401, text="Unauthorized"))
+
+    async with aiohttp.ClientSession() as session:
+        client = MELCloudHome(access_token="static", session=session)
+        with pytest.raises(MelCloudHomeAuthenticationError):
+            await client.get_context()
+
+    aresponses.assert_plan_strictly_followed()
