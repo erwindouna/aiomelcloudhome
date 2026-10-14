@@ -13,6 +13,8 @@ from syrupy.assertion import SnapshotAssertion
 
 from aiomelcloudhome import MELCloudHomeWebSocket, MelCloudHomeWebSocketError
 from aiomelcloudhome import websocket as websocket_module
+from aiomelcloudhome.exceptions import MelCloudHomeAuthenticationError, MelCloudHomeConnectionError
+from aiomelcloudhome.models.realtime import UnitStateDelta
 
 _TOKEN_HOST = "6x2dgdulg7omjsxalnhmo4ynba0dcgwk.lambda-url.eu-west-1.on.aws"
 
@@ -179,3 +181,101 @@ async def test_stream_retries_on_connection_error(monkeypatch: pytest.MonkeyPatc
     with pytest.raises(TimeoutError):
         await asyncio.wait_for(_consume(), timeout=0.1)
     assert session.ws_connect.call_count >= 1
+
+
+async def test_listen_calls_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    """listen() passes deltas and connection changes to the callbacks and ends on close()."""
+    monkeypatch.setattr(websocket_module, "BACKOFF", 0.0)
+    frame = [{"messageType": "unitStateChanged", "Data": {"id": "u1", "unitType": "ata", "settings": [{"name": "Power", "value": True}]}}]
+    session = MagicMock()
+    session.ws_connect = MagicMock(return_value=_FakeWS([_FakeMessage(WSMsgType.TEXT, frame)]))
+    ws = MELCloudHomeWebSocket(_auth(), session)
+    monkeypatch.setattr(ws, "_fetch_hash", AsyncMock(return_value="hash"))
+
+    events: list[str] = []
+
+    def _on_delta(delta: UnitStateDelta) -> None:
+        events.append(f"delta {delta.unit_id} connected={ws.connected}")
+        asyncio.get_running_loop().create_task(ws.close())
+
+    ws.register_delta_callback(_on_delta)
+    ws.register_connection_callback(lambda connected: events.append(f"connected={connected}"))
+
+    await asyncio.wait_for(ws.listen(), timeout=1.0)
+    assert events == ["connected=True", "delta u1 connected=True", "connected=False"]
+    assert ws.connected is False
+
+
+async def test_unregister_callbacks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unregistered callbacks are no longer called."""
+    monkeypatch.setattr(websocket_module, "BACKOFF", 0.0)
+    frame = [{"messageType": "unitStateChanged", "Data": {"id": "u1", "unitType": "ata", "settings": [{"name": "Power", "value": True}]}}]
+    session = MagicMock()
+    session.ws_connect = MagicMock(return_value=_FakeWS([_FakeMessage(WSMsgType.TEXT, frame)]))
+    ws = MELCloudHomeWebSocket(_auth(), session)
+    monkeypatch.setattr(ws, "_fetch_hash", AsyncMock(return_value="hash"))
+    on_delta = MagicMock()
+    on_connection = MagicMock()
+
+    def _close(_: UnitStateDelta) -> None:
+        asyncio.get_running_loop().create_task(ws.close())
+
+    ws.register_delta_callback(_close)
+    ws.register_delta_callback(on_delta)()
+    ws.register_connection_callback(on_connection)()
+
+    await asyncio.wait_for(ws.listen(), timeout=1.0)
+    on_delta.assert_not_called()
+    on_connection.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(MelCloudHomeWebSocketError("token"), id="token_request"),
+        pytest.param(MelCloudHomeConnectionError("auth down"), id="auth_connection"),
+    ],
+)
+async def test_listen_retries_token_failure(monkeypatch: pytest.MonkeyPatch, error: Exception) -> None:
+    """listen() retries a failing token request instead of ending."""
+    monkeypatch.setattr(websocket_module, "BACKOFF", 0.0)
+    frame = [{"messageType": "unitStateChanged", "Data": {"id": "u1", "unitType": "ata", "settings": [{"name": "Power", "value": True}]}}]
+    session = MagicMock()
+    session.ws_connect = MagicMock(return_value=_FakeWS([_FakeMessage(WSMsgType.TEXT, frame)]))
+    ws = MELCloudHomeWebSocket(_auth(), session)
+    fetch_hash = AsyncMock(side_effect=[error, "hash"])
+    monkeypatch.setattr(ws, "_fetch_hash", fetch_hash)
+
+    deltas: list[UnitStateDelta] = []
+
+    def _on_delta(delta: UnitStateDelta) -> None:
+        deltas.append(delta)
+        asyncio.get_running_loop().create_task(ws.close())
+
+    ws.register_delta_callback(_on_delta)
+    await asyncio.wait_for(ws.listen(), timeout=1.0)
+    assert fetch_hash.await_count == 2
+    assert len(deltas) == 1
+
+
+async def test_listen_raises_on_auth_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An authentication error ends listen() so the caller can reauthenticate."""
+    ws = MELCloudHomeWebSocket(_auth(), MagicMock())
+    monkeypatch.setattr(ws, "_fetch_hash", AsyncMock(side_effect=MelCloudHomeAuthenticationError("bad")))
+    with pytest.raises(MelCloudHomeAuthenticationError):
+        await ws.listen()
+
+
+async def test_listen_without_connection_change_on_failed_connect(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A connect attempt that fails reports no connection change."""
+    monkeypatch.setattr(websocket_module, "BACKOFF", 0.0)
+    session = MagicMock()
+    session.ws_connect = MagicMock(side_effect=ClientError("down"))
+    ws = MELCloudHomeWebSocket(_auth(), session)
+    monkeypatch.setattr(ws, "_fetch_hash", AsyncMock(return_value="hash"))
+    on_connection = MagicMock()
+    ws.register_connection_callback(on_connection)
+
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(ws.listen(), timeout=0.1)
+    on_connection.assert_not_called()

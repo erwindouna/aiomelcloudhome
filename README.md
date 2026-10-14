@@ -140,17 +140,23 @@ The stream raises `MelCloudHomeWebSocketError` if the realtime channel cannot be
 you can fall back to polling.
 
 For a long-lived listener that you need to start and stop (for example a Home Assistant
-coordinator), use `client.websocket()` to hold a handle, run `stream()` in a background task, and
-`close()` it on teardown:
+coordinator), use `client.websocket()` to hold a handle, register your callbacks and await
+`listen()` in a task you own. It retries every failure except
+`MelCloudHomeAuthenticationError` and returns once you `close()` it. The connection callback
+tells you when live updates stop and start working, so you can poll in between:
 
 ~~~python
 ws = client.websocket()
-task = asyncio.create_task(_listen(ws))  # _listen iterates `async for delta in ws.stream()`
+ws.register_delta_callback(lambda delta: print(delta.unit_id, delta.changes))
+ws.register_connection_callback(lambda connected: print("live" if connected else "lost"))
+task = asyncio.create_task(ws.listen())
 
 # on shutdown (e.g. async_unload_entry):
-await ws.close()  # stops gracefully; stream() ends on its own
+await ws.close()  # stops gracefully; listen() returns on its own
 await task
 ~~~
+
+Both `register_*` methods return a function that unregisters the callback.
 
 More examples can be found in the examples directory.
 
