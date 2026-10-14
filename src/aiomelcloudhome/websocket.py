@@ -2,14 +2,14 @@
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Self
 
 from aiohttp import ClientError, ClientSession, ClientTimeout, ClientWebSocketResponse, WSMsgType
 from yarl import URL
 
 from .auth import AbstractAuth
-from .exceptions import MelCloudHomeWebSocketError
+from .exceptions import MelCloudHomeConnectionError, MelCloudHomeTimeoutError, MelCloudHomeWebSocketError
 from .models.realtime import UnitStateDelta, parse_frame
 
 _LOGGER = logging.getLogger(__name__)
@@ -42,6 +42,33 @@ class MELCloudHomeWebSocket:
         self._request_timeout = request_timeout
         self._stop = asyncio.Event()
         self._ws: ClientWebSocketResponse | None = None
+        self._delta_callbacks: list[Callable[[UnitStateDelta], None]] = []
+        self._connection_callbacks: list[Callable[[bool], None]] = []
+        self._connected = False
+
+    @property
+    def connected(self) -> bool:
+        """Return whether a live socket is currently established."""
+        return self._connected
+
+    def register_delta_callback(self, callback: Callable[[UnitStateDelta], None]) -> Callable[[], None]:
+        """Register a callback for every live unit-state delta; returns a function that unregisters it."""
+        self._delta_callbacks.append(callback)
+        return lambda: self._delta_callbacks.remove(callback)
+
+    def register_connection_callback(self, callback: Callable[[bool], None]) -> Callable[[], None]:
+        """Register a callback for connection changes (``True`` = live, ``False`` = lost).
+
+        Returns a function that unregisters it. Use it to poll while the stream is down.
+        """
+        self._connection_callbacks.append(callback)
+        return lambda: self._connection_callbacks.remove(callback)
+
+    def _set_connected(self, *, connected: bool) -> None:
+        """Store the connection state and notify the connection callbacks."""
+        self._connected = connected
+        for callback in list(self._connection_callbacks):
+            callback(connected)
 
     async def __aenter__(self) -> Self:
         """Enter the async context; pair with iterating :meth:`stream`."""
@@ -82,8 +109,26 @@ class MELCloudHomeWebSocket:
 
         Iterate this (typically inside a background task); the iterator ends cleanly once
         :meth:`close` is called. Transient socket drops — including the ~2h gateway cap —
-        are retried with exponential backoff.
+        are retried with exponential backoff. A failing token request raises
+        :class:`MelCloudHomeWebSocketError`; use :meth:`listen` to retry those too.
         """
+        async for delta in self._run(retry_token_errors=False):
+            yield delta
+
+    async def listen(self) -> None:
+        """Run until :meth:`close`, passing every live delta to the registered delta callbacks.
+
+        Await this in a task you own; it creates no tasks of its own. Every failure is
+        retried with exponential backoff, the token request included, except
+        :class:`MelCloudHomeAuthenticationError`, which is raised. Connection changes go to
+        the registered connection callbacks; the stream starts out disconnected.
+        """
+        async for delta in self._run(retry_token_errors=True):
+            for callback in list(self._delta_callbacks):
+                callback(delta)
+
+    async def _run(self, *, retry_token_errors: bool) -> AsyncIterator[UnitStateDelta]:
+        """Connect, yield deltas and reconnect with backoff until :meth:`close`."""
         self._stop.clear()
         backoff = BACKOFF
         while not self._stop.is_set():
@@ -94,16 +139,24 @@ class MELCloudHomeWebSocket:
                     _LOGGER.debug("MELCloud Home WebSocket connected")
                     self._ws = ws
                     backoff = BACKOFF
-                    async for msg in ws:
-                        if msg.type == WSMsgType.TEXT:
-                            for delta in parse_frame(msg.json()):
-                                yield delta
-                        elif msg.type in (WSMsgType.CLOSE, WSMsgType.CLOSING, WSMsgType.CLOSED, WSMsgType.ERROR):
-                            _LOGGER.info("MELCloud Home WebSocket closed with type %s", msg.type)
-                            break
+                    self._set_connected(connected=True)
+                    try:
+                        async for msg in ws:
+                            if msg.type == WSMsgType.TEXT:
+                                for delta in parse_frame(msg.json()):
+                                    yield delta
+                            elif msg.type in (WSMsgType.CLOSE, WSMsgType.CLOSING, WSMsgType.CLOSED, WSMsgType.ERROR):
+                                _LOGGER.info("MELCloud Home WebSocket closed with type %s", msg.type)
+                                break
+                    finally:
+                        self._set_connected(connected=False)
                 _LOGGER.debug("MELCloud Home WebSocket closed; reconnecting")
             except (ClientError, TimeoutError) as err:
                 _LOGGER.debug("MELCloud Home WebSocket connection error: %s; retrying in %.0fs", err, backoff)
+            except (MelCloudHomeWebSocketError, MelCloudHomeConnectionError, MelCloudHomeTimeoutError) as err:
+                if not retry_token_errors:
+                    raise
+                _LOGGER.debug("MELCloud Home WebSocket token request failed: %s; retrying in %.0fs", err, backoff)
             finally:
                 self._ws = None
             if self._stop.is_set():
