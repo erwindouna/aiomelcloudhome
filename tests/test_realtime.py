@@ -290,6 +290,7 @@ def _atw_frame(name: str, value: Any) -> list[dict[str, Any]]:
         pytest.param("Heating", ATWOperationMode.HEATING, id="heating"),
         pytest.param("Cooling", ATWOperationMode.COOLING, id="cooling"),
         pytest.param("FreezeStat", ATWOperationMode.FREEZE_STAT, id="freeze_stat"),
+        pytest.param("LegionellaPrevention", ATWOperationMode.LEGIONELLA_PREVENTION, id="legionella_prevention"),
         pytest.param("Defrost", None, id="unknown"),
         pytest.param(True, None, id="bool"),
     ],

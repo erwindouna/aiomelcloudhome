@@ -30,6 +30,7 @@ class ATWOperationMode(StrEnum):
     HEATING = "Heating"
     COOLING = "Cooling"
     FREEZE_STAT = "FreezeStat"
+    LEGIONELLA_PREVENTION = "LegionellaPrevention"
     HEAT = "Heat"
     HEAT_ZONES = "HeatZones"
     COOL = "Cool"
